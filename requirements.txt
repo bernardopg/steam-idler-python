@@ -6,7 +6,7 @@ gevent==25.5.1
 gevent-eventemitter==2.1
 greenlet==3.2.3
 idna==3.10
-protobuf==3.20.3
+protobuf==4.25.8
 pycryptodomex==3.23.0
 requests==2.32.4
 setuptools==80.9.0

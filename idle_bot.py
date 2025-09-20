@@ -4,7 +4,16 @@ import sys
 import time
 
 import requests
-from steam.client import SteamClient
+try:
+    from steam.client import SteamClient  # type: ignore
+    _STEAM_IMPORT_OK = True
+except Exception as _import_err:  # Broad except to catch protobuf/steam import issues
+    SteamClient = None  # type: ignore
+    _STEAM_IMPORT_OK = False
+    logging.warning(
+        "Steam client import failed; functionality requiring Steam will be disabled: %s",
+        _import_err,
+    )
 
 # Log the Python version and steam library version
 logging.info(f"Python version: {sys.version}")
@@ -68,6 +77,11 @@ def initialize_client():
     """Initialize the Steam client with minimal setup to test compatibility."""
     global client
     try:
+        if not _STEAM_IMPORT_OK or SteamClient is None:
+            logging.error(
+                "Steam client is unavailable (import failed). Ensure compatible dependencies are installed."
+            )
+            return False
         client = SteamClient()
         return True
     except Exception as e:
