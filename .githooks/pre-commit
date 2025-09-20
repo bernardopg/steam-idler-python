@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Prevent committing local secrets or environment-specific files
+
+set -euo pipefail
+
+# Block committing config.py explicitly
+if git diff --cached --name-only | grep -qE '^config\.py$'; then
+  echo "Error: Refusing to commit config.py (contains secrets)." >&2
+  echo "Tip: Keep credentials in config.py (not tracked) or use env vars." >&2
+  exit 1
+fi
+
+# Basic sanity: prevent large accidentally added venv or cache
+if git diff --cached --name-only | grep -qE '(^|/)__pycache__/|(^|/)venv/|(^|/)\.vscode/'; then
+  echo "Warning: You are staging cache/venv/.vscode files. Please unstage them." >&2
+  echo "Run: git restore --staged <paths>" >&2
+  exit 1
+fi
+
+exit 0

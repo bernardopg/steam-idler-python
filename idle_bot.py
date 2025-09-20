@@ -50,10 +50,17 @@ client = None
 
 
 def ensure_credentials_configured():
-    """Abort early if credentials are missing."""
-    if not USERNAME or not PASSWORD:
+    """Abort early if credentials are missing or placeholders are used.
+
+    We consider the example placeholders from config_example.py invalid to prevent
+    accidental runs without real credentials.
+    """
+    placeholder_user = str(USERNAME).strip().lower() in {"", "your_steam_username"}
+    placeholder_pass = str(PASSWORD).strip().lower() in {"", "your_steam_password"}
+    if placeholder_user or placeholder_pass:
         logging.error(
-            "Steam credentials not configured. Update config.py before running the bot."
+            "Steam credentials not configured. Copy config_example.py to config.py "
+            "and set USERNAME/PASSWORD before running."
         )
         sys.exit(1)
 
