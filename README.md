@@ -113,4 +113,18 @@ If you prefer to manually specify games, here are some popular ones with trading
 ## License
 
 This project is for educational purposes. Use responsibly and in accordance with Steam's Terms of Service.
-# steam-idler-python
+
+## steam-idler-python
+
+## Continuous Integration
+
+This repository includes a GitHub Actions workflow that:
+
+- runs pytest on push and pull requests to `main`
+- tests against Python 3.11 and 3.13
+- performs a quick bytecode compile check on `idle_bot.py`
+- verifies `config.py` is not accidentally committed
+- lints with Ruff
+- generates a coverage.xml and uploads it as a workflow artifact
+
+See `.github/workflows/ci.yml` for details.

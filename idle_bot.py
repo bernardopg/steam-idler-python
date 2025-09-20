@@ -2,7 +2,6 @@ import argparse
 import logging
 import sys
 import time
-from typing import List
 
 import requests
 from steam.client import SteamClient
@@ -137,7 +136,7 @@ def has_trading_cards(app_id: int) -> bool:
         return False
 
 
-def get_owned_games() -> List[int]:
+def get_owned_games() -> list[int]:
     """
     Get the list of owned games from the user's Steam library.
     Note: This requires the user to be logged in and have a public profile
@@ -188,7 +187,7 @@ def get_owned_games() -> List[int]:
         return GAME_APP_IDS
 
 
-def filter_games_with_trading_cards(game_ids: List[int]) -> List[int]:
+def filter_games_with_trading_cards(game_ids: list[int]) -> list[int]:
     """
     Filter a list of game IDs to only include games with trading cards.
     """
@@ -226,7 +225,7 @@ def filter_games_with_trading_cards(game_ids: List[int]) -> List[int]:
         logging.info("Interrupted by user. Using games found so far...")
 
     logging.info(
-        f"Found {len(filtered_games)} games with trading cards out of {len(game_ids)} total games checked"
+        f"Trading-card games found: {len(filtered_games)} of {len(game_ids)} checked"
     )
     return (
         filtered_games[:MAX_GAMES_TO_IDLE]
@@ -235,7 +234,7 @@ def filter_games_with_trading_cards(game_ids: List[int]) -> List[int]:
     )
 
 
-def get_games_to_idle() -> List[int]:
+def get_games_to_idle() -> list[int]:
     """
     Get the final list of games to idle based on configuration.
     """
@@ -307,9 +306,8 @@ if __name__ == "__main__":
         try:
             # Use the correct login method based on the available API
             if hasattr(client, "cli_login"):
-                logging.info(
-                    "Attempting login, please be ready to enter any authentication code if prompted..."
-                )
+                logging.info("Attempting login...")
+                logging.info("Be ready to enter any authentication code if prompted.")
                 result = client.cli_login(username=USERNAME, password=PASSWORD)
                 logging.info("Login attempt completed, checking result...")
                 if result == 1:
