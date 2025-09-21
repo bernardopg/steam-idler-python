@@ -80,8 +80,8 @@ def test_filter_games_with_remaining_cards_handles_missing_field():
 
     result = service.filter_games_with_remaining_cards([555], "123")
 
-    # Without cards_remaining info we should keep the game
-    assert result == [555]
+    # Missing cards_remaining indicates drops are exhausted
+    assert result == []
 
 
 def test_fetch_cards_remaining_raises_on_timeout():

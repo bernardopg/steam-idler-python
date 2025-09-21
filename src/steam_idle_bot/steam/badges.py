@@ -116,7 +116,8 @@ class BadgeService:
 
             remaining = badge.get("cards_remaining")
             if remaining is None:
-                # Some badges don't expose remaining cards; skip so caller keeps the game
+                # Steam omits cards_remaining once all drops are exhausted.
+                cards_remaining[app_id_int] = 0
                 continue
 
             try:
