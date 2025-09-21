@@ -1,291 +1,223 @@
-# Steam Idle Bot with Trading Card Support
+# Steam Idle Bot
 
-![CI](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml/badge.svg)
+> Farm Steam playtime and trading cards without babysitting — complete with Steam Guard support, badge-awareness, and a modern Python toolchain.
 
-## 🚀 Features
+[![CI](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml)
 
-- ✅ **Trading Card Filtering**: Automatically detect and idle only games that have Steam Trading Cards
-- ✅ **Automatic Game Library Detection**: Use your owned games instead of manually specifying them
-- ✅ **Modern Configuration**: Type-safe configuration with Pydantic and environment variables
-- ✅ **Steam Guard Support**: Handles Steam Guard authentication automatically
-- ✅ **Robust Error Handling**: Custom exceptions and graceful handling of network errors
-- ✅ **Structured Logging**: Rich console output with configurable log levels
-- ✅ **Periodic Refresh**: Automatically refreshes game status and library
-- ✅ **Modern Python Tooling**: Uses UV for fast dependency management
-- ✅ **Modular Architecture**: Clean separation of concerns with maintainable code
-- ✅ **Comprehensive Testing**: Unit tests with >80% coverage
+---
 
-## 📋 Requirements
+## ✨ Highlights
 
-- Python 3.9+
-- Steam account with games
-- Optional: Steam Web API key for better functionality
+- 🎴 **Card-smart idling** — detect card-enabled games and skip any that already dropped every card (requires Steam Web API key).
+- 🕹️ **Zero-maintenance library sync** — auto-pull your owned games and rotate the idled set every few minutes.
+- 🔐 **Steam Guard friendly** — enter the 2FA code once and the session stays alive.
+- 🧱 **Resilient networking** — retrying HTTP sessions, graceful fallbacks, and structured logging out of the box.
+- ⚙️ **UV-first workflow** — blazing-fast installs, reproducible environments, and batteries-included developer tooling.
 
-## 🛠️ Installation
+---
 
-### Using UV (Recommended)
+## 🚀 Quick Start (5 minutes)
 
-1. **Install UV** (if not already installed):
+1. **Install UV**
 
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. **Clone and setup**:
+2. **Clone & install**
 
    ```bash
    git clone https://github.com/bernardopg/steam-idler-python.git
    cd steam-idler-python
-   ```
-
-3. **Install dependencies**:
-
-   ```bash
    uv sync
    ```
 
-4. **Configure the bot**:
+3. **Configure credentials**
 
    ```bash
    cp config_example.py config.py
-   # Edit config.py with your Steam credentials
+   # Edit config.py with your Steam username, password, and optional API key
    ```
 
-> Note: This project is UV-first. If you must use pip, mirror dependencies from `pyproject.toml` and proceed at your own risk.
+4. **Dry run sanity check**
 
-## ⚙️ Configuration
+   ```bash
+   ./run.sh --dry-run
+   ```
 
-### Method 1: Python config file (config.py)
+5. **Start idling**
 
-```python
-# Steam credentials (REQUIRED)
-USERNAME = "your_steam_username"
-PASSWORD = "your_steam_password"
+   ```bash
+   ./run.sh
+   ```
 
-# Game configuration
-GAME_APP_IDS = [570, 730]  # Default games to idle
-FILTER_TRADING_CARDS = True  # Only idle games with trading cards
-USE_OWNED_GAMES = True  # Use your Steam library automatically
-MAX_GAMES_TO_IDLE = 30  # Max games to idle simultaneously
+> **Tip:** The badge-aware filter needs `STEAM_API_KEY`. Without it the bot still works, it just can’t tell if a game has drops remaining.
 
-# Steam Web API key (OPTIONAL but recommended)
-STEAM_API_KEY = "your_api_key"  # Get from https://steamcommunity.com/dev/apikey
+---
 
-# Logging
-LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-LOG_FILE = None  # Optional log file path
+## 📦 Requirements
 
-# Performance
-API_TIMEOUT = 10  # API request timeout in seconds
-RATE_LIMIT_DELAY = 0.5  # Delay between API calls
-```
+- Python **3.9+** (managed by UV).
+- Steam account with games that drop cards.
+- Steam Web API key *(recommended)* for badge progress filtering.
 
-### Method 2: Environment variables
+---
 
-```bash
-export STEAM_USERNAME="your_steam_username"
-export STEAM_PASSWORD="your_steam_password"
-export STEAM_API_KEY="your_api_key"
-```
+## ⚙️ Configuration Options
 
-### Method 3: .env file
+You can configure the bot via `config.py`, environment variables, or a `.env` file. Key settings are summarised below:
 
-Create a `.env` file:
+| Setting | Description | Default |
+| --- | --- | --- |
+| `USERNAME`, `PASSWORD` | Steam credentials (required) | – |
+| `STEAM_API_KEY` | Enables owned-games lookups & badge filtering | `None` |
+| `GAME_APP_IDS` | Fallback list when library can’t be fetched | `[570, 730]` |
+| `FILTER_TRADING_CARDS` | Only idle games that have card support | `True` |
+| `FILTER_COMPLETED_CARD_DROPS` | Skip games with zero cards remaining | `True` |
+| `USE_OWNED_GAMES` | Pull the library from the Web API | `True` |
+| `MAX_GAMES_TO_IDLE` | Steam caps simultaneous games at 32 | `30` |
+| `LOG_LEVEL`, `LOG_FILE` | Logging verbosity and optional file output | `INFO`, `None` |
+| `API_TIMEOUT`, `RATE_LIMIT_DELAY` | Store API timeouts & pacing | `10`, `0.5` |
 
-```text
-STEAM_USERNAME=your_steam_username
-STEAM_PASSWORD=your_steam_password
-STEAM_API_KEY=your_api_key
-```
+Environment variable equivalents: `STEAM_USERNAME`, `STEAM_PASSWORD`, `STEAM_API_KEY`, etc. Dropping a `.env` file works too.
 
-## 🎯 Usage
+---
 
-### Quick Start
+## ▶️ Running the Bot
 
 ```bash
-# Test configuration (dry run)
+# Dry run (no login) – prints config + chosen games
 ./run.sh --dry-run
 
-# Run normally
+# Normal run
 ./run.sh
 
-# Run with custom options
-./run.sh --no-trading-cards --max-games 10
+# Bypass card filters for quick testing
+./run.sh --keep-completed-drops --no-trading-cards
 
-# Alternatively, via module directly
+# Limit the session to five games
+./run.sh --max-games 5
+
+# One-off run with env vars only
+STEAM_USERNAME=foo STEAM_PASSWORD=bar ./run.sh
+```
+
+You can also call the package directly:
+
+```bash
 uv run python -m steam_idle_bot --dry-run
 ```
 
-### Command Line Options
+### CLI Reference
 
-```bash
---dry-run              # Test configuration without connecting to Steam
---no-trading-cards     # Skip trading card filtering for faster startup
---max-games N          # Override MAX_GAMES_TO_IDLE configuration
---config PATH          # Use custom configuration file
---no-cache             # Disable persistent trading-card cache
---max-checks N         # Cap number of store lookups (performance)
---skip-failures        # Suppress non-timeout error logs during checks
-```
+| Flag | Purpose |
+| --- | --- |
+| `--dry-run` | Show configuration and chosen games without contacting Steam |
+| `--no-trading-cards` | Skip store lookups and accept the supplied list |
+| `--keep-completed-drops` | Include games even if badge drops are exhausted |
+| `--max-games N` | Override `MAX_GAMES_TO_IDLE` |
+| `--config PATH` | Load a custom configuration file |
+| `--no-cache` | Disable the on-disk trading-card cache |
+| `--max-checks N` | Cap store lookups for very large libraries |
+| `--skip-failures` | Silence non-timeout errors while checking cards |
 
-### Examples
+---
 
-```bash
-# Basic usage
-./run.sh
+## 🧠 Under the Hood
 
-# Skip trading card detection
-./run.sh --no-trading-cards
+1. **Library Discovery** — pulls owned games through `IPlayerService/GetOwnedGames` (falls back to `GAME_APP_IDS`).
+2. **Card Detection** — fetches `appdetails` to verify category `29` and caches results on disk.
+3. **Badge Awareness** — calls `IPlayerService/GetBadges` to drop games with `cards_remaining == 0`.
+4. **Steam Session** — logs in via the official `steam` Python client, honouring Steam Guard challenges.
+5. **Idle Loop** — refreshes the game list every ten minutes while keeping the gevent loop alive.
 
-# Limit to 5 games
-./run.sh --max-games 5
+---
 
-# Test configuration
-./run.sh --dry-run
+## 🔐 Security & Safety
 
-# Use environment variables
-STEAM_USERNAME=myuser STEAM_PASSWORD=mypass ./run.sh
-```
+- `config.py` is `.gitignore`d — never commit real credentials.
+- Prefer a dedicated Steam account for idling to avoid impacting your main profile.
+- Rotate your API key periodically; revoke it immediately if compromised.
+- Logs respect `LOG_LEVEL`; set it to `DEBUG` for support, revert to `INFO` for day-to-day use.
 
-## 🔄 How Trading Card Detection Works
+---
 
-The bot uses the Steam Store API to check if games have trading cards:
-
-1. Queries `https://store.steampowered.com/api/appdetails`
-2. Checks for category ID 29 (Steam Trading Cards)
-3. Uses a persistent JSON cache with TTL to avoid repeated API calls
-4. Uses an HTTP session with retries/backoff for resilience
-5. Respects rate limits with configurable delays
-
-## 🛡️ Security Notes
-
-- **Never commit config.py** - it contains your Steam credentials
-- Use environment variables for CI/CD
-- Consider using a dedicated Steam account for idling
-- The bot uses the same authentication as the official Steam client
-- All credentials are validated to prevent placeholder values
-
-## 🧪 Development
-
-### Project Structure
+## 🧪 Developer Guide
 
 ```text
 steam-idle-bitter/
+├── config_example.py
+├── docs/
+│   └── USAGE.md
+├── run.sh
 ├── src/
 │   └── steam_idle_bot/
+│       ├── __main__.py
 │       ├── __init__.py
-│       ├── main.py              # Main entry point
+│       ├── main.py
 │       ├── config/
-│       │   ├── __init__.py
-│       │   └── settings.py      # Configuration management
+│       │   └── settings.py
 │       ├── steam/
-│       │   ├── __init__.py
-│       │   ├── client.py        # Steam client wrapper
-│       │   ├── games.py         # Game library management
-│       │   └── trading_cards.py # Trading card detection
+│       │   ├── badges.py
+│       │   ├── client.py
+│       │   ├── games.py
+│       │   └── trading_cards.py
 │       └── utils/
-│           ├── __init__.py
-│           ├── logger.py        # Logging configuration
-│           └── exceptions.py    # Custom exceptions
+│           ├── exceptions.py
+│           └── logger.py
 ├── tests/
-│   ├── unit/
-│   │   ├── test_settings.py
-│   │   └── test_trading_cards.py
-│   └── integration/
-├── docs/
-├── scripts/
-├── configs/
-├── idle_bot.py (legacy)
-├── run.sh
-└── README.md
+│   ├── integration/
+│   └── unit/
+└── uv.lock
 ```
 
-### Running Tests
+### Common Tasks
 
 ```bash
-# With UV
-uv run pytest tests/ -v
-
-# With coverage
-uv run pytest tests/ --cov=steam_idle_bot --cov-report=html
-
-# Run specific test file
-uv run pytest tests/unit/test_settings.py -v
-```
-
-### Development Setup
-
-```bash
-# Install development dependencies
+# Install dev extras and keep the lockfile fresh
 uv sync --dev
 
-# Run linting
-uv run ruff check src/
-uv run ruff format src/
+# Run the full test suite
+uv run pytest
 
-# Type checking
-uv run mypy src/
+# Lint & format
+uv run ruff check .
+uv run ruff format --check .
+
+# Compile check (optional confidence boost)
+uv run python -m compileall src/steam_idle_bot
 ```
 
-## 🐛 Troubleshooting
+Pull requests should include tests when behaviour changes, note any required config updates, and describe manual validation steps.
 
-### Common Issues
+---
 
-### "Steam credentials not configured"
+## 🛟 Troubleshooting
 
-- Ensure config.py exists and has real credentials
-- Check for placeholder values like "your_steam_username"
+| Symptom | Fix |
+| --- | --- |
+| `Steam credentials not configured` | Ensure `config.py` exists or export `STEAM_USERNAME`/`STEAM_PASSWORD`. Placeholders like `your_steam_username` are rejected. |
+| `Login failed` | Check Steam Guard for the 2FA code, confirm credentials, and verify the account isn’t locked. |
+| `No games to idle` | Add a Steam Web API key, or run with `--no-trading-cards` to bypass filtering. |
+| `ImportError: No module named 'steam'` | Run `uv sync`; if using system Python ensure it’s 3.9+. |
+| Bot idles but no cards drop | The badge filter determined those games are exhausted. Run with `--keep-completed-drops` or expand `GAME_APP_IDS`. |
 
-### "ImportError: No module named 'steam'"
-
-- Run `uv sync` to install dependencies
-- Ensure Python 3.9+ is being used
-
-### "Login failed"
-
-- Check Steam Guard mobile app for 2FA code
-- Verify username and password are correct
-- Ensure Steam account is not locked
-
-### "No games found to idle"
-
-- Check if you have games with trading cards
-- Verify Steam API key is set for library access
-- Try with `--no-trading-cards` flag
-
-### Debug Mode
+Enable verbose logging when debugging:
 
 ```bash
-# Enable debug logging
-LOG_LEVEL=DEBUG ./run.sh
-
-# Or in config.py
-LOG_LEVEL = "DEBUG"
+LOG_LEVEL=DEBUG ./run.sh --dry-run
 ```
 
-## 📊 Monitoring
+---
 
-The bot provides detailed logging:
+## 📘 Further Reading
 
-- **INFO**: General operation status
-- **WARNING**: Non-critical issues
-- **ERROR**: Critical problems
-- **DEBUG**: Detailed debugging information
+- [Usage cheatsheet](docs/USAGE.md)
 
-## 🤝 Contributing
+---
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+## ⚖️ Responsible Use
 
-## 📄 License
+This project is for educational purposes. Respect Steam’s Terms of Service and your regional regulations when using automated idlers.
 
-This project is for educational purposes. Use responsibly and in accordance with Steam's Terms of Service.
-
-## 🆘 Support
-
-- Check the [Issues](https://github.com/bernardopg/steam-idler-python/issues) page
-- Review the troubleshooting section
-- Enable debug logging for detailed information
+Need help? Open an [issue](https://github.com/bernardopg/steam-idler-python/issues) with logs (redacting secrets) and steps to reproduce.

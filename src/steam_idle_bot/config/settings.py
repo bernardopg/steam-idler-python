@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     use_owned_games: bool = Field(
         default=True, description="Automatically use games from Steam library"
     )
+    filter_completed_card_drops: bool = Field(
+        default=True,
+        description="Skip games that have already dropped all available trading cards",
+    )
     max_games_to_idle: int = Field(
         default=30,
         ge=1,
@@ -148,6 +152,7 @@ class Settings(BaseSettings):
                     "PASSWORD": "password",
                     "GAME_APP_IDS": "game_app_ids",
                     "FILTER_TRADING_CARDS": "filter_trading_cards",
+                    "FILTER_COMPLETED_CARD_DROPS": "filter_completed_card_drops",
                     "USE_OWNED_GAMES": "use_owned_games",
                     "MAX_GAMES_TO_IDLE": "max_games_to_idle",
                     "STEAM_API_KEY": "steam_api_key",

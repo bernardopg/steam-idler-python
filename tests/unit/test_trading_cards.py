@@ -16,7 +16,9 @@ class TestTradingCardDetector:
 
     def test_init(self):
         """Test initialization."""
-        detector = TradingCardDetector(timeout=5, rate_limit_delay=0.1)
+        detector = TradingCardDetector(
+            timeout=5, rate_limit_delay=0.1, cache_enabled=False
+        )
         assert detector.timeout == 5
         assert detector.rate_limit_delay == 0.1
         assert detector._cache == {}

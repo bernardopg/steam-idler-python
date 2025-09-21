@@ -7,12 +7,13 @@ account details. Keep the populated config.py out of version control.
 USERNAME = "your_steam_username"
 PASSWORD = "your_steam_password"
 
-GAME_APP_IDS = [570, 730]
+GAME_APP_IDS = [570, 730]  # Fallback list of game IDs to idle if not using owned games
 
 # Trading card filtering
 FILTER_TRADING_CARDS = True  # Set to True to only idle games with trading cards
+FILTER_COMPLETED_CARD_DROPS = True  # Skip games that already dropped all cards
 USE_OWNED_GAMES = True  # Set to True to automatically get games from your library
-MAX_GAMES_TO_IDLE = 30  # Maximum number of games to idle simultaneously
+MAX_GAMES_TO_IDLE = 10  # Maximum number of games to idle simultaneously
 
 # Steam Web API key (OPTIONAL but recommended)
 # Get yours at: https://steamcommunity.com/dev/apikey

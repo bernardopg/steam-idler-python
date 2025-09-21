@@ -1,6 +1,7 @@
 """Steam client wrapper with improved error handling and logging."""
 
 import logging
+import time
 from typing import Any, Optional
 
 from ..config.settings import Settings
@@ -192,6 +193,17 @@ class SteamClientWrapper:
         except Exception as e:
             logger.error(f"Error during logout: {e}")
             return False
+
+    def sleep(self, seconds: float) -> None:
+        """Yield control to the Steam client's event loop while idling."""
+        if self._client and hasattr(self._client, "sleep"):
+            try:
+                self._client.sleep(seconds)
+                return
+            except Exception as exc:
+                logger.debug(f"Steam client sleep failed, falling back to time.sleep: {exc}")
+
+        time.sleep(seconds)
 
     def refresh_games(self, game_ids: list[int]) -> bool:
         """

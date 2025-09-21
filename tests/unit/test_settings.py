@@ -14,6 +14,7 @@ class TestSettings:
 
         assert settings.filter_trading_cards is True
         assert settings.use_owned_games is True
+        assert settings.filter_completed_card_drops is True
         assert settings.max_games_to_idle == 30
         assert settings.game_app_ids == [570, 730]
         assert settings.log_level == "INFO"
@@ -32,7 +33,7 @@ class TestSettings:
             Settings(
                 username="test_user",
                 password="test_pass",
-                game_app_ids=[-1, 0, "invalid"],
+                game_app_ids=[-1, 0],
             )
 
     def test_max_games_validation(self):

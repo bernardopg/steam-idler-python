@@ -5,6 +5,7 @@ import sys
 import time
 
 from .config.settings import Settings
+from .steam.badges import BadgeService
 from .steam.client import SteamClientWrapper
 from .steam.games import GameManager
 from .steam.trading_cards import TradingCardDetector
@@ -20,17 +21,24 @@ class SteamIdleBot:
             level=settings.log_level, log_file=settings.log_file
         )
         self.client = SteamClientWrapper(settings)
-        # Build a retrying HTTP session for resilient store API calls
-        session = TradingCardDetector.build_session()
+        # Build retrying HTTP sessions for resilient HTTP calls
+        store_session = TradingCardDetector.build_session()
         self.trading_card_detector = TradingCardDetector(
             timeout=settings.api_timeout,
             rate_limit_delay=settings.rate_limit_delay,
             cache_enabled=settings.enable_card_cache,
             cache_path=settings.card_cache_path,
             cache_ttl_days=settings.card_cache_ttl_days,
-            session=session,
+            session=store_session,
         )
-        self.game_manager = GameManager(settings, self.trading_card_detector)
+        badge_service = None
+        if settings.filter_completed_card_drops:
+            badge_session = TradingCardDetector.build_session()
+            badge_service = BadgeService(settings, session=badge_session)
+
+        self.game_manager = GameManager(
+            settings, self.trading_card_detector, badge_service
+        )
         self._running = False
 
     def run(self, dry_run: bool = False) -> None:
@@ -60,6 +68,9 @@ class SteamIdleBot:
         self.logger.info("Configuration:")
         self.logger.info(
             f"  - Filter Trading Cards: {self.settings.filter_trading_cards}"
+        )
+        self.logger.info(
+            f"  - Skip Completed Card Drops: {self.settings.filter_completed_card_drops}"
         )
         self.logger.info(f"  - Use Owned Games: {self.settings.use_owned_games}")
         self.logger.info(f"  - Max Games to Idle: {self.settings.max_games_to_idle}")
@@ -108,7 +119,7 @@ class SteamIdleBot:
 
         while self._running:
             try:
-                time.sleep(60)  # Check every minute
+                self.client.sleep(60)  # Allow Steam client event loop to run
 
                 # Refresh games every 10 minutes
                 if time.time() - last_refresh >= refresh_interval:
@@ -140,7 +151,7 @@ class SteamIdleBot:
                 break
             except Exception as e:
                 self.logger.error(f"Error in main loop: {e}")
-                time.sleep(30)  # Wait before retrying
+                self.client.sleep(30)
 
     def _cleanup(self) -> None:
         """Clean up resources."""
@@ -206,6 +217,12 @@ Examples:
         help="Suppress non-timeout errors during trading-card checks",
     )
 
+    parser.add_argument(
+        "--keep-completed-drops",
+        action="store_true",
+        help="Include games even if all trading-card drops are exhausted",
+    )
+
     return parser
 
 
@@ -233,6 +250,9 @@ def main() -> None:
 
         if args.skip_failures:
             settings.skip_failures = True
+
+        if args.keep_completed_drops:
+            settings.filter_completed_card_drops = False
 
         # Create and run bot
         bot = SteamIdleBot(settings)

@@ -45,3 +45,8 @@ class GameLibraryError(SteamIdleBotError):
 class RateLimitError(SteamIdleBotError):
     """Raised when rate limits are exceeded."""
     pass
+
+
+class BadgeServiceError(SteamIdleBotError):
+    """Raised when badge progress retrieval fails."""
+    pass

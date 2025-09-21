@@ -7,7 +7,7 @@ from typing import Optional
 import requests
 
 from ..config.settings import Settings
-from ..utils.exceptions import GameLibraryError, SteamAPITimeoutError
+from ..utils.exceptions import BadgeServiceError, GameLibraryError, SteamAPITimeoutError
 from .trading_cards import TradingCardDetector
 
 
@@ -17,9 +17,15 @@ logger = logging.getLogger(__name__)
 class GameManager:
     """Manages Steam game library and filtering."""
 
-    def __init__(self, settings: Settings, trading_card_detector: TradingCardDetector):
+    def __init__(
+        self,
+        settings: Settings,
+        trading_card_detector: TradingCardDetector,
+        badge_service=None,
+    ):
         self.settings = settings
         self.trading_card_detector = trading_card_detector
+        self.badge_service = badge_service
         self._owned_games_cache: Optional[list[int]] = None
 
     def get_owned_games(self, steam_id: Optional[str] = None) -> list[int]:
@@ -106,10 +112,15 @@ class GameManager:
             games = self.settings.game_app_ids
 
         if self.settings.filter_trading_cards:
+            padded_target = self.settings.max_games_to_idle
+            if self.settings.filter_completed_card_drops:
+                padded_target += max(5, self.settings.max_games_to_idle // 2)
+                padded_target = min(padded_target, len(games))
+
             logger.info("Filtering games with trading cards...")
             games = self.trading_card_detector.filter_games_with_trading_cards(
                 games,
-                max_games=self.settings.max_games_to_idle,
+                max_games=padded_target,
                 max_checks=self.settings.max_checks,
                 skip_failures=self.settings.skip_failures,
             )
@@ -120,8 +131,14 @@ class GameManager:
                 f"Using first {len(games)} games (trading card filtering disabled)"
             )
 
+        games = self._filter_completed_card_drops(games, steam_id)
+
+        games = games[: self.settings.max_games_to_idle]
+
         if not games:
-            logger.warning("No games found to idle! Using default games.")
+            logger.warning("No games found to idle after filtering")
+            if self.settings.filter_completed_card_drops:
+                return []
             return self.settings.game_app_ids[: self.settings.max_games_to_idle]
 
         return games
@@ -130,3 +147,39 @@ class GameManager:
         """Clear all caches."""
         self._owned_games_cache = None
         self.trading_card_detector.clear_cache()
+        if self.badge_service:
+            self.badge_service.clear_cache()
+
+    def _filter_completed_card_drops(
+        self, games: list[int], steam_id: Optional[str]
+    ) -> list[int]:
+        if not games:
+            return games
+
+        if not (
+            self.settings.filter_completed_card_drops
+            and self.badge_service
+            and self.settings.steam_api_key
+            and steam_id
+        ):
+            if self.settings.filter_completed_card_drops and not self.settings.steam_api_key:
+                logger.debug(
+                    "Skipping card-drop progress filter: Steam API key not configured"
+                )
+            return games
+
+        try:
+            filtered_games = self.badge_service.filter_games_with_remaining_cards(
+                games, steam_id
+            )
+            if not filtered_games:
+                logger.info(
+                    "All candidate games have already dropped their trading cards"
+                )
+            return filtered_games
+        except SteamAPITimeoutError as err:
+            logger.warning(f"Badge progress request timed out: {err}")
+        except BadgeServiceError as err:
+            logger.warning(f"Failed to retrieve badge progress: {err}")
+
+        return games
