@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, List
+from typing import Any, Iterable
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -50,10 +50,10 @@ class BadgeService:
 
     def filter_games_with_remaining_cards(
         self, game_ids: Iterable[int], steam_id: str
-    ) -> List[int]:
+    ) -> list[int]:
         """Return IDs that still have trading cards available to drop."""
         cards_remaining = self._fetch_cards_remaining(steam_id)
-        filtered: List[int] = []
+        filtered: list[int] = []
         skipped = 0
 
         for app_id in game_ids:
@@ -70,7 +70,7 @@ class BadgeService:
 
         return filtered
 
-    def _fetch_cards_remaining(self, steam_id: str) -> Dict[int, int]:
+    def _fetch_cards_remaining(self, steam_id: str) -> dict[int, int]:
         if not self.settings.steam_api_key:
             raise BadgeServiceError(
                 "Steam API key required to check trading-card drop progress"
@@ -101,7 +101,7 @@ class BadgeService:
             raise BadgeServiceError("Invalid JSON response from badge API") from err
 
         badges = data.get("response", {}).get("badges", [])
-        cards_remaining: Dict[int, int] = {}
+        cards_remaining: dict[int, int] = {}
 
         for badge in badges:
             app_id = badge.get("appid")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Deque, List, Optional, cast
+from typing import Optional, cast
 
 from steam_idle_bot.config.settings import Settings
 from steam_idle_bot.main import SteamIdleBot
@@ -32,9 +32,9 @@ class FakeClient:
         self.steam_id = steam_id
         self.initialize_calls = 0
         self.login_calls = 0
-        self.start_calls: List[List[int]] = []
-        self.refresh_calls: List[List[int]] = []
-        self.sleep_calls: List[float] = []
+        self.start_calls: list[list[int]] = []
+        self.refresh_calls: list[list[int]] = []
+        self.sleep_calls: list[float] = []
         self.stop_called = False
         self.logout_called = False
         self.should_remain_connected = True
@@ -47,11 +47,11 @@ class FakeClient:
         self.login_calls += 1
         return True
 
-    def start_idling(self, games: List[int]) -> bool:
+    def start_idling(self, games: list[int]) -> bool:
         self.start_calls.append(list(games))
         return True
 
-    def refresh_games(self, games: List[int]) -> None:
+    def refresh_games(self, games: list[int]) -> None:
         self.refresh_calls.append(list(games))
 
     def is_connected(self) -> bool:
@@ -68,11 +68,11 @@ class FakeClient:
 
 
 class FakeGameManager:
-    def __init__(self, results: Optional[Deque[List[int]]]) -> None:
+    def __init__(self, results: Optional[deque[list[int]]]) -> None:
         self.results = results or deque()
-        self.calls: List[Optional[str]] = []
+        self.calls: list[Optional[str]] = []
 
-    def get_games_to_idle(self, steam_id: Optional[str]) -> List[int]:
+    def get_games_to_idle(self, steam_id: Optional[str]) -> list[int]:
         self.calls.append(steam_id)
         if not self.results:
             return []
@@ -93,9 +93,9 @@ def test_run_normal_mode_starts_idling_and_enters_main_loop(monkeypatch):
     bot.client = cast(SteamClientWrapper, client)
     bot.game_manager = cast(GameManager, manager)
 
-    captured_games: List[List[int]] = []
+    captured_games: list[list[int]] = []
 
-    def fake_main_loop(games: List[int]) -> None:
+    def fake_main_loop(games: list[int]) -> None:
         captured_games.append(list(games))
 
     monkeypatch.setattr(bot, "_main_loop", fake_main_loop)
@@ -122,9 +122,9 @@ def test_main_loop_refreshes_games_when_library_changes(monkeypatch):
     times = iter([0.0, 700.0, 700.0])
     monkeypatch.setattr(time, "time", lambda: next(times))
 
-    refreshed: List[List[int]] = []
+    refreshed: list[list[int]] = []
 
-    def record_refresh(games: List[int]) -> None:
+    def record_refresh(games: list[int]) -> None:
         refreshed.append(list(games))
         bot._running = False  # stop loop after first refresh
 
