@@ -1,10 +1,12 @@
 # Steam Idle Bot
 
+[![English](https://img.shields.io/badge/lang-English-blue)](docs/en/README.md)
+[![Português (BR)](https://img.shields.io/badge/idioma-Portugu%C3%AAs%20(BR)-green)](docs/pt-br/README.md)
+
 > 🚀 Automate Steam playtime farming and trading card drops effortlessly. No more manual babysitting – just set it up and let it run! With smart features like badge awareness, Steam Guard support, and a sleek Python setup, it's the ultimate tool for Steam enthusiasts.
 >
 > 🚀 Automatize o farm de tempo de jogo e drops de cartas Steam sem esforço. Sem mais supervisão manual – apenas configure e deixe rodar! Com recursos inteligentes como detecção de emblemas, suporte Steam Guard e uma configuração Python moderna.
 
-[![CI Status](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/bernardopg/steam-idler-python.svg?style=social)](https://github.com/bernardopg/steam-idler-python/stargazers)
@@ -62,7 +64,7 @@ git clone https://github.com/bernardopg/steam-idler-python.git && cd steam-idler
    - 🇺🇸 [English Documentation](docs/en/README.md)
    - 🇧🇷 [Documentação em Português](docs/pt-br/README.md)
 
-2. **Configure / Configure**: Copy `config_example.py` to `config.py` and add your credentials
+2. **Configure / Configure**: Copy `config_example.py` to `config.py` and add your credentials (don’t commit `config.py`)
 3. **Test / Teste**: Run `./run.sh --dry-run` to preview your setup
 4. **Launch / Inicie**: Run `./run.sh` to start the bot
 

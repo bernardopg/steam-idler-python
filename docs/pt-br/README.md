@@ -2,7 +2,6 @@
 
 > 🚀 Automatize o farm de tempo de jogo e drops de cartas Steam sem esforço. Sem mais supervisão manual – apenas configure e deixe rodar! Com recursos inteligentes como detecção de emblemas, suporte Steam Guard e uma configuração Python moderna, é a ferramenta definitiva para entusiastas da Steam.
 
-[![CI Status](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/bernardopg/steam-idler-python.svg?style=social)](https://github.com/bernardopg/steam-idler-python/stargazers)
@@ -151,7 +150,7 @@ Combine conforme suas necessidades!
 4. **Login Seguro**: Usa o cliente Steam Python oficial com tratamento Steam Guard.
 5. **Ciclo de Idle**: Rotaciona jogos a cada 10 minutos em um loop eficiente.
 
-Tudo é alimentado por gevent para eficiência assíncrona e sessões HTTP resilientes.
+O bot usa sessões HTTP resilientes com retries/backoff. Não é necessário framework assíncrono externo.
 
 ---
 
@@ -163,7 +162,7 @@ Tudo é alimentado por gevent para eficiência assíncrona e sessões HTTP resil
 - **Logging**: Use `INFO` para uso normal; aumente para `DEBUG` para troubleshooting.
 - **Privacidade**: O bot apenas interage com APIs Steam – nenhum dado sai da sua máquina.
 
-Para vulnerabilidades, veja nossa [Política de Segurança](../SECURITY.md).
+Para vulnerabilidades, veja nossa [Política de Segurança](SECURITY.md).
 
 ---
 
@@ -241,6 +240,4 @@ Licenciado sob MIT – fork, modifique e aproveite!
 
 ## Política de Segurança
 
-**Versões Suportadas**: Apenas o branch `main` mais recente.
-
-**Reportar Vulnerabilidades**: Email para <noreply@scalpel.com.br> com detalhes. Sem issues públicas, por favor. Respondemos em até 5 dias úteis. PGP opcional – compartilhe sua chave para respostas criptografadas.
+Veja o arquivo local [SECURITY.md](SECURITY.md) para como reportar vulnerabilidades e versões suportadas.

@@ -2,7 +2,6 @@
 
 > 🚀 Automate Steam playtime farming and trading card drops effortlessly. No more manual babysitting – just set it up and let it run! With smart features like badge awareness, Steam Guard support, and a sleek Python setup, it's the ultimate tool for Steam enthusiasts.
 
-[![CI Status](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml/badge.svg)](https://github.com/bernardopg/steam-idler-python/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/bernardopg/steam-idler-python.svg?style=social)](https://github.com/bernardopg/steam-idler-python/stargazers)
@@ -151,7 +150,7 @@ Mix and match for your needs!
 4. **Secure Login**: Uses the official Steam Python client with Steam Guard handling.
 5. **Idle Cycle**: Rotates games every 10 minutes in an efficient loop.
 
-It's all powered by gevent for async efficiency and resilient HTTP sessions.
+The bot uses resilient HTTP sessions with retries/backoff. No external async framework is required.
 
 ---
 
@@ -163,7 +162,7 @@ It's all powered by gevent for async efficiency and resilient HTTP sessions.
 - **Logging**: Stick to `INFO` for normal use; bump to `DEBUG` for troubleshooting.
 - **Privacy**: The bot only interacts with Steam APIs – no data leaves your machine.
 
-For vulnerabilities, see our [Security Policy](../SECURITY.md).
+For vulnerabilities, see our [Security Policy](SECURITY.md).
 
 ---
 
@@ -200,8 +199,7 @@ uv run pytest
 uv run ruff check .
 uv run ruff format .
 
-# Type check
-uv run mypy src/
+
 ```
 
 PRs welcome! Include tests, update docs, and describe changes.
@@ -241,6 +239,4 @@ Licensed under MIT – fork, modify, and enjoy!
 
 ## Security Policy
 
-**Supported Versions**: Latest `main` branch only.
-
-**Report Vulnerabilities**: Email <noreply@scalpel.com.br> with details. No public issues, please. We respond within 5 business days. PGP optional – share your key for encrypted replies.
+See the local [SECURITY.md](SECURITY.md) for how to report vulnerabilities and supported versions.

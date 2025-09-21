@@ -49,9 +49,9 @@ STEAM_USERNAME=foo STEAM_PASSWORD=bar ./run.sh --dry-run
 
 ## 📝 Lembretes de Configuração
 
-- Copie `config_example.py` para `config.py` e preencha com credenciais reais.
-- Variáveis de ambiente (`STEAM_USERNAME`, `STEAM_PASSWORD`, `STEAM_API_KEY`) sobrescrevem valores de arquivo.
-- Arquivos `.env` são suportados; UV os carregará automaticamente.
+- Copie `config_example.py` para `config.py` e preencha com credenciais reais (não faça commit do arquivo).
+- Variáveis de ambiente têm precedência. Use `USERNAME`/`PASSWORD` ou `STEAM_USERNAME`/`STEAM_PASSWORD`. `STEAM_API_KEY` é opcional porém recomendado.
+- Arquivos `.env` são suportados ao executar via UV; os valores do `.env` funcionam como variáveis de ambiente.
 
 ---
 

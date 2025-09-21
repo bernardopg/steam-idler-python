@@ -233,7 +233,12 @@ def main() -> None:
 
     try:
         # Load settings
-        settings = Settings.load_from_file()
+        settings_path = None
+        if args.config:
+            from pathlib import Path
+
+            settings_path = Path(args.config)
+        settings = Settings.load_from_file(settings_path)
 
         # Override settings from command line
         if args.no_trading_cards:
