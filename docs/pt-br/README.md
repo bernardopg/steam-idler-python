@@ -91,6 +91,7 @@ Personalize via `config.py`, variáveis de ambiente ou arquivo `.env`. Variávei
 | `GAME_APP_IDS`           | Lista de jogos de fallback se a chave API estiver faltando (ex: [570, 730] para Dota 2/CS:GO). | `[570, 730]`   |
 | `FILTER_TRADING_CARDS`   | Apenas fazer idle de jogos com suporte a cartas Steam.                                  | `True`         |
 | `FILTER_COMPLETED_CARD_DROPS` | Pular jogos onde todas as cartas já foram dropadas.                               | `True`         |
+| `EXCLUDE_APP_IDS`             | Lista manual de app IDs a ignorar sempre.                                         | `[]`           |
 | `USE_OWNED_GAMES`        | Buscar automaticamente sua biblioteca completa via API.                                  | `True`         |
 | `MAX_GAMES_TO_IDLE`      | Máximo de jogos simultâneos (limite Steam: 32).                                   | `30`           |
 | `LOG_LEVEL`, `LOG_FILE`  | Detalhes de logging e saída opcional para arquivo.                                    | `INFO`, `None` |
@@ -100,6 +101,7 @@ Personalize via `config.py`, variáveis de ambiente ou arquivo `.env`. Variávei
 
 - Variáveis de ambiente: `export STEAM_USERNAME=seunome STEAM_PASSWORD=suasenha`
 - Arquivo .env: Crie `.env` com `STEAM_USERNAME=seunome` etc., e UV carrega automaticamente.
+- Precisa ignorar um jogo específico? Adicione o ID em `EXCLUDE_APP_IDS`.
 
 ---
 

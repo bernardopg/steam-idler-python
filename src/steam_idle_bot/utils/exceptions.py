@@ -50,3 +50,8 @@ class RateLimitError(SteamIdleBotError):
 class BadgeServiceError(SteamIdleBotError):
     """Raised when badge progress retrieval fails."""
     pass
+
+
+class CardDropCheckError(SteamIdleBotError):
+    """Raised when card drop checking fails."""
+    pass

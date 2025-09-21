@@ -15,6 +15,7 @@ class TestSettings:
         assert settings.filter_trading_cards is True
         assert settings.use_owned_games is True
         assert settings.filter_completed_card_drops is True
+        assert settings.exclude_app_ids == []
         assert settings.max_games_to_idle == 30
         assert settings.game_app_ids == [570, 730]
         assert settings.log_level == "INFO"

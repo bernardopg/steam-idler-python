@@ -127,3 +127,32 @@ def test_badge_errors_fall_back_to_trading_card_list():
 
     assert games == [220, 300]
     assert badge_service.calls
+
+
+def test_get_games_to_idle_integration():
+    detector = StubTradingCardDetector({220, 300, 333})
+    badge_service = StubBadgeService({220})
+    settings = make_settings(game_app_ids=[220, 300, 333], max_games_to_idle=2)
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+
+    # Successful case
+    games = manager.get_games_to_idle("123")
+    assert games == [220, 300]
+
+    # Test with all games completed
+    badge_service.keep = set()
+    games = manager.get_games_to_idle("123")
+    assert games == []
+
+    # Test with exclusions
+    badge_service.keep = {220, 300}
+    settings.exclude_app_ids = [300]
+    games = manager.get_games_to_idle("123")
+    assert games == [220]
+
+    # Test badge service error fallback
+    badge_service.exc = BadgeServiceError("error")
+    settings.exclude_app_ids = []
+    games = manager.get_games_to_idle("123")
+    assert games == [220, 300]
+    assert badge_service.calls

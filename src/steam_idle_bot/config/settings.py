@@ -29,6 +29,9 @@ class Settings(BaseSettings):
         default=True,
         description="Skip games that have already dropped all available trading cards",
     )
+    exclude_app_ids: list[int] = Field(
+        default_factory=list, description="Always ignore these app IDs"
+    )
     max_games_to_idle: int = Field(
         default=30,
         ge=1,
@@ -153,6 +156,7 @@ class Settings(BaseSettings):
                     "GAME_APP_IDS": "game_app_ids",
                     "FILTER_TRADING_CARDS": "filter_trading_cards",
                     "FILTER_COMPLETED_CARD_DROPS": "filter_completed_card_drops",
+                    "EXCLUDE_APP_IDS": "exclude_app_ids",
                     "USE_OWNED_GAMES": "use_owned_games",
                     "MAX_GAMES_TO_IDLE": "max_games_to_idle",
                     "STEAM_API_KEY": "steam_api_key",

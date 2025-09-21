@@ -91,6 +91,7 @@ Customize via `config.py`, environment variables, or a `.env` file. Environment 
 | `GAME_APP_IDS`           | Fallback game list if API key is missing (e.g., [570, 730] for Dota 2/CS:GO). | `[570, 730]`   |
 | `FILTER_TRADING_CARDS`   | Only idle games with trading card support.                                  | `True`         |
 | `FILTER_COMPLETED_CARD_DROPS` | Skip games where all cards have dropped.                               | `True`         |
+| `EXCLUDE_APP_IDS`             | Manual denylist of app IDs to skip no matter what.                     | `[]`           |
 | `USE_OWNED_GAMES`        | Auto-fetch your full game library via API.                                  | `True`         |
 | `MAX_GAMES_TO_IDLE`      | Max simultaneous games (Steam limit: 32).                                   | `30`           |
 | `LOG_LEVEL`, `LOG_FILE`  | Logging detail and optional file output.                                    | `INFO`, `None` |
@@ -100,6 +101,7 @@ Customize via `config.py`, environment variables, or a `.env` file. Environment 
 
 - Environment vars: `export STEAM_USERNAME=yourname STEAM_PASSWORD=yourpass`
 - .env file: Create `.env` with `STEAM_USERNAME=yourname` etc., and UV loads it automatically.
+- Need to blacklist a stubborn game? Add its ID to `EXCLUDE_APP_IDS`.
 
 ---
 

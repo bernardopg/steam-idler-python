@@ -12,6 +12,7 @@ GAME_APP_IDS = [570, 730]  # Fallback list of game IDs to idle if not using owne
 # Trading card filtering
 FILTER_TRADING_CARDS = True  # Set to True to only idle games with trading cards
 FILTER_COMPLETED_CARD_DROPS = True  # Skip games that already dropped all cards
+EXCLUDE_APP_IDS: list[int] = []  # Always skip these app IDs
 USE_OWNED_GAMES = True  # Set to True to automatically get games from your library
 MAX_GAMES_TO_IDLE = 10  # Maximum number of games to idle simultaneously
 

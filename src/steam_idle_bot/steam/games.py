@@ -7,9 +7,14 @@ from typing import Optional
 import requests
 
 from ..config.settings import Settings
-from ..utils.exceptions import BadgeServiceError, GameLibraryError, SteamAPITimeoutError
+from ..utils.detailed_logger import DetailedLogger
+from ..utils.exceptions import (
+    BadgeServiceError,
+    GameLibraryError,
+    SteamAPITimeoutError,
+)
+from .card_drops import CardDropChecker
 from .trading_cards import TradingCardDetector
-
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,8 @@ class GameManager:
         self.settings = settings
         self.trading_card_detector = trading_card_detector
         self.badge_service = badge_service
+        self.card_drop_checker = CardDropChecker(settings)
+        self.detailed_logger = DetailedLogger(settings)
         self._owned_games_cache: Optional[list[int]] = None
 
     def get_owned_games(self, steam_id: Optional[str] = None) -> list[int]:
@@ -46,16 +53,26 @@ class GameManager:
 
         try:
             if self.settings.steam_api_key and steam_id:
-                return self._get_owned_games_via_api(steam_id)
+                games = self._get_owned_games_via_api(steam_id)
             else:
                 logger.warning(
                     "Steam API key not available, using configured game list"
                 )
-                return self.settings.game_app_ids
+                games = self.settings.game_app_ids
+
+            # Log the games retrieved
+            self.detailed_logger.log_api_results(
+                "owned_games", games, {"source": "api" if self.settings.steam_api_key and steam_id else "config"}
+            )
+            return games
 
         except Exception as e:
             logger.error(f"Error getting owned games: {e}")
-            return self.settings.game_app_ids
+            games = self.settings.game_app_ids
+            self.detailed_logger.log_api_results(
+                "owned_games", games, {"source": "config_fallback", "error": str(e)}
+            )
+            return games
 
     def _get_owned_games_via_api(self, steam_id: str) -> list[int]:
         """Get owned games using Steam Web API."""
@@ -103,45 +120,101 @@ class GameManager:
         Returns:
             List of game IDs to idle
         """
+        # Get all games
         if self.settings.use_owned_games:
             logger.info("Getting owned games from Steam library...")
-            games = self.get_owned_games(steam_id)
-            logger.info(f"Found {len(games)} owned games")
+            all_games = self.get_owned_games(steam_id)
+            logger.info(f"Found {len(all_games)} owned games")
         else:
             logger.info("Using manually specified game list...")
-            games = self.settings.game_app_ids
+            all_games = self.settings.game_app_ids
 
+        # Filter trading cards
+        games_with_cards = all_games
         if self.settings.filter_trading_cards:
             padded_target = self.settings.max_games_to_idle
             if self.settings.filter_completed_card_drops:
                 padded_target += max(5, self.settings.max_games_to_idle // 2)
-                padded_target = min(padded_target, len(games))
+                padded_target = min(padded_target, len(all_games))
 
             logger.info("Filtering games with trading cards...")
-            games = self.trading_card_detector.filter_games_with_trading_cards(
-                games,
+            games_with_cards = self.trading_card_detector.filter_games_with_trading_cards(
+                all_games,
                 max_games=padded_target,
                 max_checks=self.settings.max_checks,
                 skip_failures=self.settings.skip_failures,
             )
-            logger.info(f"Found {len(games)} games with trading cards")
-        else:
-            games = games[: self.settings.max_games_to_idle]
-            logger.info(
-                f"Using first {len(games)} games (trading card filtering disabled)"
+            logger.info(f"Found {len(games_with_cards)} games with trading cards")
+
+            self.detailed_logger.log_api_results(
+                "trading_cards", games_with_cards, {"total_checked": len(all_games)}
             )
 
-        games = self._filter_completed_card_drops(games, steam_id)
+        # Filter completed card drops
+        games_with_drops = games_with_cards
+        if self.settings.filter_completed_card_drops and steam_id:
+            logger.info("Filtering completed card drops...")
+            games_with_drops = self._filter_completed_card_drops(games_with_cards, steam_id)
+            logger.info(f"After filtering drops: {len(games_with_drops)} games remaining")
 
-        games = games[: self.settings.max_games_to_idle]
+        # Remove user-specified exclusions
+        excluded_games = []
+        if self.settings.exclude_app_ids:
+            before = len(games_with_drops)
+            games_with_drops = [
+                gid for gid in games_with_drops
+                if gid not in self.settings.exclude_app_ids
+            ]
+            excluded_games = [gid for gid in all_games if gid in self.settings.exclude_app_ids]
+            removed = before - len(games_with_drops)
+            if removed:
+                logger.info(
+                    "Excluded %s games via configuration overrides", removed
+                )
 
-        if not games:
+        # Final selection
+        final_games = games_with_drops[: self.settings.max_games_to_idle]
+
+        # Log the complete process
+        scraping_results = {}
+        if self.settings.filter_completed_card_drops and steam_id:
+            # Get scraping results if available
+            try:
+                scraping_results = {
+                    app_id: self.card_drop_checker.has_remaining_drops(app_id, steam_id)
+                    for app_id in games_with_cards
+                }
+            except Exception:
+                pass
+
+        self.detailed_logger.log_filtering_process(
+            steam_id or "manual",
+            all_games,
+            games_with_cards,
+            games_with_drops,
+            final_games,
+            excluded_games,
+            scraping_results,
+        )
+
+        if not final_games:
             logger.warning("No games found to idle after filtering")
-            if self.settings.filter_completed_card_drops:
+            if self.settings.filter_completed_card_drops and len(games_with_drops) == len(games_with_cards):
+                # If filtering completed drops but no games remain and we couldn't actually filter,
+                # try with a more lenient approach assuming games have drops if status couldn't be determined
+                logger.info("Attempting fallback: including games that couldn't be checked")
+                # Return a subset of games with cards, assuming they have drops if we can't determine status
+                fallback_games = games_with_cards[: self.settings.max_games_to_idle]
+                if fallback_games:
+                    logger.info(f"Using fallback games: {fallback_games}")
+                    return fallback_games
+            # If filtering successfully determined no games have remaining drops, return empty
+            if len(games_with_drops) == 0:
                 return []
             return self.settings.game_app_ids[: self.settings.max_games_to_idle]
 
-        return games
+        logger.info(f"Final games to idle: {final_games}")
+        return final_games
 
     def clear_cache(self) -> None:
         """Clear all caches."""
@@ -156,30 +229,46 @@ class GameManager:
         if not games:
             return games
 
-        if not (
-            self.settings.filter_completed_card_drops
-            and self.badge_service
-            and self.settings.steam_api_key
-            and steam_id
-        ):
-            if self.settings.filter_completed_card_drops and not self.settings.steam_api_key:
-                logger.debug(
-                    "Skipping card-drop progress filter: Steam API key not configured"
-                )
+        if not steam_id:
             return games
 
+        # Prefer badge service over web scraping for authoritative data
+        if self.badge_service and self.settings.steam_api_key:
+            try:
+                logger.info("Consulting badge service for authoritative data...")
+                badge_filtered = self.badge_service.filter_games_with_remaining_cards(
+                    games, steam_id
+                )
+                logger.info(f"Badge service completed: {len(badge_filtered)}/{len(games)} games have remaining drops")
+                if not badge_filtered:
+                    logger.info(
+                        "All candidate games have already dropped their trading cards"
+                    )
+                return badge_filtered
+            except SteamAPITimeoutError as err:
+                logger.warning(f"Badge progress request timed out: {err}")
+            except BadgeServiceError as err:
+                logger.warning(f"Failed to retrieve badge progress: {err}")
+
+        # Fall back to web scraping if badge service is not available or failed
         try:
-            filtered_games = self.badge_service.filter_games_with_remaining_cards(
+            logger.info("Checking card drops via web scraping...")
+            scraping_filtered = self.card_drop_checker.filter_games_with_drops(
                 games, steam_id
             )
-            if not filtered_games:
+            logger.info(f"Web scraping completed: {len(scraping_filtered)}/{len(games)} games have drops")
+
+            if not scraping_filtered:
                 logger.info(
                     "All candidate games have already dropped their trading cards"
                 )
-            return filtered_games
-        except SteamAPITimeoutError as err:
-            logger.warning(f"Badge progress request timed out: {err}")
-        except BadgeServiceError as err:
-            logger.warning(f"Failed to retrieve badge progress: {err}")
+            return scraping_filtered
 
+        except Exception as err:
+            logger.warning(f"Web scraping failed: {err}")
+
+        # If both badge service and web scraping failed, include all games as fallback
+        logger.warning(
+            "Could not check card drop status, including all games as fallback"
+        )
         return games

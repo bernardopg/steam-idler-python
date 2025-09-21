@@ -59,10 +59,16 @@ class BadgeService:
 
         for app_id in game_ids:
             remaining = cards_remaining.get(app_id)
-            if remaining is None or remaining > 0:
+            if remaining is None:
+                # Game not in badges list - probably still has drops
+                filtered.append(app_id)
+            elif remaining > 0:
+                # Game has remaining drops
                 filtered.append(app_id)
             else:
+                # Game has 0 remaining drops
                 skipped += 1
+                logger.debug(f"Filtered out game {app_id} - 0 cards remaining")
 
         if skipped:
             logger.info(
@@ -114,11 +120,13 @@ class BadgeService:
             except (TypeError, ValueError):
                 continue
 
-            remaining = badge.get("cards_remaining")
-            if remaining is None:
-                # Steam omits cards_remaining once all drops are exhausted.
-                cards_remaining[app_id_int] = 0
+            # Check if this is a trading card badge
+            border_color = badge.get("border_color", 0)
+            if border_color != 0:
+                # Not a trading card badge, skip
                 continue
+
+            remaining = badge.get("cards_remaining", 0)
 
             try:
                 remaining_int = int(remaining)
