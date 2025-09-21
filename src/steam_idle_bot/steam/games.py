@@ -62,7 +62,13 @@ class GameManager:
 
             # Log the games retrieved
             self.detailed_logger.log_api_results(
-                "owned_games", games, {"source": "api" if self.settings.steam_api_key and steam_id else "config"}
+                "owned_games",
+                games,
+                {
+                    "source": (
+                        "api" if self.settings.steam_api_key and steam_id else "config"
+                    )
+                },
             )
             return games
 
@@ -138,11 +144,13 @@ class GameManager:
                 padded_target = min(padded_target, len(all_games))
 
             logger.info("Filtering games with trading cards...")
-            games_with_cards = self.trading_card_detector.filter_games_with_trading_cards(
-                all_games,
-                max_games=padded_target,
-                max_checks=self.settings.max_checks,
-                skip_failures=self.settings.skip_failures,
+            games_with_cards = (
+                self.trading_card_detector.filter_games_with_trading_cards(
+                    all_games,
+                    max_games=padded_target,
+                    max_checks=self.settings.max_checks,
+                    skip_failures=self.settings.skip_failures,
+                )
             )
             logger.info(f"Found {len(games_with_cards)} games with trading cards")
 
@@ -154,23 +162,28 @@ class GameManager:
         games_with_drops = games_with_cards
         if self.settings.filter_completed_card_drops and steam_id:
             logger.info("Filtering completed card drops...")
-            games_with_drops = self._filter_completed_card_drops(games_with_cards, steam_id)
-            logger.info(f"After filtering drops: {len(games_with_drops)} games remaining")
+            games_with_drops = self._filter_completed_card_drops(
+                games_with_cards, steam_id
+            )
+            logger.info(
+                f"After filtering drops: {len(games_with_drops)} games remaining"
+            )
 
         # Remove user-specified exclusions
         excluded_games = []
         if self.settings.exclude_app_ids:
             before = len(games_with_drops)
             games_with_drops = [
-                gid for gid in games_with_drops
+                gid
+                for gid in games_with_drops
                 if gid not in self.settings.exclude_app_ids
             ]
-            excluded_games = [gid for gid in all_games if gid in self.settings.exclude_app_ids]
+            excluded_games = [
+                gid for gid in all_games if gid in self.settings.exclude_app_ids
+            ]
             removed = before - len(games_with_drops)
             if removed:
-                logger.info(
-                    "Excluded %s games via configuration overrides", removed
-                )
+                logger.info("Excluded %s games via configuration overrides", removed)
 
         # Final selection
         final_games = games_with_drops[: self.settings.max_games_to_idle]
@@ -179,13 +192,13 @@ class GameManager:
         scraping_results = {}
         if self.settings.filter_completed_card_drops and steam_id:
             # Get scraping results if available
-            try:
+            from contextlib import suppress
+
+            with suppress(Exception):
                 scraping_results = {
                     app_id: self.card_drop_checker.has_remaining_drops(app_id, steam_id)
                     for app_id in games_with_cards
                 }
-            except Exception:
-                pass
 
         self.detailed_logger.log_filtering_process(
             steam_id or "manual",
@@ -199,11 +212,17 @@ class GameManager:
 
         if not final_games:
             logger.warning("No games found to idle after filtering")
-            if self.settings.filter_completed_card_drops and len(games_with_drops) == len(games_with_cards):
+            if self.settings.filter_completed_card_drops and len(
+                games_with_drops
+            ) == len(games_with_cards):
                 # If filtering completed drops but no games remain and we couldn't actually filter,
-                # try with a more lenient approach assuming games have drops if status couldn't be determined
-                logger.info("Attempting fallback: including games that couldn't be checked")
-                # Return a subset of games with cards, assuming they have drops if we can't determine status
+                # try with a more lenient approach assuming games have drops
+                # if status couldn't be determined
+                logger.info(
+                    "Attempting fallback: including games that couldn't be checked"
+                )
+                # Return a subset of games with cards, assuming they have drops
+                # when status can't be determined
                 fallback_games = games_with_cards[: self.settings.max_games_to_idle]
                 if fallback_games:
                     logger.info(f"Using fallback games: {fallback_games}")
@@ -239,7 +258,11 @@ class GameManager:
                 badge_filtered = self.badge_service.filter_games_with_remaining_cards(
                     games, steam_id
                 )
-                logger.info(f"Badge service completed: {len(badge_filtered)}/{len(games)} games have remaining drops")
+                logger.info(
+                    "Badge service completed: %s/%s games have remaining drops",
+                    len(badge_filtered),
+                    len(games),
+                )
                 if not badge_filtered:
                     logger.info(
                         "All candidate games have already dropped their trading cards"
@@ -256,7 +279,11 @@ class GameManager:
             scraping_filtered = self.card_drop_checker.filter_games_with_drops(
                 games, steam_id
             )
-            logger.info(f"Web scraping completed: {len(scraping_filtered)}/{len(games)} games have drops")
+            logger.info(
+                "Web scraping completed: %s/%s games have drops",
+                len(scraping_filtered),
+                len(games),
+            )
 
             if not scraping_filtered:
                 logger.info(

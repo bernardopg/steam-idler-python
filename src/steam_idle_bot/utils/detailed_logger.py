@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from ..config.settings import Settings
 
@@ -29,12 +29,12 @@ class DetailedLogger:
     def log_filtering_process(
         self,
         steam_id: str,
-        all_games: List[int],
-        games_with_cards: List[int],
-        games_with_drops: List[int],
-        final_games: List[int],
-        excluded_games: List[int],
-        scraping_results: Dict[int, bool],
+        all_games: list[int],
+        games_with_cards: list[int],
+        games_with_drops: list[int],
+        final_games: list[int],
+        excluded_games: list[int],
+        scraping_results: dict[int, bool],
     ) -> None:
         """
         Log the complete filtering process.
@@ -88,7 +88,7 @@ class DetailedLogger:
 
         # Append to existing file or create new one
         if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as f:
+            with open(filename, encoding="utf-8") as f:
                 try:
                     existing_data = json.load(f)
                 except json.JSONDecodeError:
@@ -104,8 +104,8 @@ class DetailedLogger:
     def log_api_results(
         self,
         api_name: str,
-        games: List[int],
-        results: Dict[str, Any],
+        games: list[int],
+        results: dict[str, Any],
     ) -> None:
         """Log API results for debugging."""
         log_data = {
@@ -120,7 +120,7 @@ class DetailedLogger:
 
         # Append to existing file or create new one
         if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as f:
+            with open(filename, encoding="utf-8") as f:
                 try:
                     existing_data = json.load(f)
                 except json.JSONDecodeError:
