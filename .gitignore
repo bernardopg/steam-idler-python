@@ -1,4 +1,13 @@
 config.py
+.env
+.cache/
 __pycache__/
 venv/
 .vscode/
+
+# Python build/cache
+*.pyc
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
