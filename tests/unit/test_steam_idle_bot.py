@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Optional, cast
+from typing import cast
 
 from steam_idle_bot.config.settings import Settings
 from steam_idle_bot.main import SteamIdleBot
@@ -68,11 +68,11 @@ class FakeClient:
 
 
 class FakeGameManager:
-    def __init__(self, results: Optional[deque[list[int]]]) -> None:
+    def __init__(self, results: deque[list[int]] | None) -> None:
         self.results = results or deque()
-        self.calls: list[Optional[str]] = []
+        self.calls: list[str | None] = []
 
-    def get_games_to_idle(self, steam_id: Optional[str]) -> list[int]:
+    def get_games_to_idle(self, steam_id: str | None) -> list[int]:
         self.calls.append(steam_id)
         if not self.results:
             return []
