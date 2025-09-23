@@ -11,3 +11,5 @@ Choose your language:
 - Português (Brasil): [README em Português](./pt-br/README.md)
 
 Or browse the repository on GitHub: [bernardopg/steam-idler-python](https://github.com/bernardopg/steam-idler-python)
+
+*Last updated: 2025-01-23*
