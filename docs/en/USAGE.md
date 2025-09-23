@@ -41,7 +41,7 @@ Combine flags to suit the session:
 # Cut down on API calls for massive libraries
 ./run.sh --max-checks 50 --skip-failures
 
-# One-off dry-run without touching config.py
+# One-off dry-run without touching config files
 STEAM_USERNAME=foo STEAM_PASSWORD=bar ./run.sh --dry-run
 ```
 
@@ -49,9 +49,9 @@ STEAM_USERNAME=foo STEAM_PASSWORD=bar ./run.sh --dry-run
 
 ## 📝 Configuration Reminders
 
-- Copy `config_example.py` to `config.py` and fill in real credentials.
-- Environment variables (`STEAM_USERNAME`, `STEAM_PASSWORD`, `STEAM_API_KEY`) override file values.
-- `.env` files are supported; UV will load them automatically.
+- Preferred: copy `.env.example` to `.env` and fill your credentials (do not commit `.env`).
+- Environment variables (`USERNAME`/`PASSWORD` or `STEAM_USERNAME`/`STEAM_PASSWORD`, plus `STEAM_API_KEY`) override file values.
+- Legacy `config.py` is still supported if present, but is discouraged.
 
 ---
 

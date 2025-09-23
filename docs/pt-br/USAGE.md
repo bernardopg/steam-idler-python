@@ -41,7 +41,7 @@ Combine flags para adequar à sessão:
 # Reduzir chamadas API para bibliotecas massivas
 ./run.sh --max-checks 50 --skip-failures
 
-# Dry-run único sem tocar em config.py
+# Dry-run único sem tocar em arquivos de configuração
 STEAM_USERNAME=foo STEAM_PASSWORD=bar ./run.sh --dry-run
 ```
 
@@ -49,9 +49,9 @@ STEAM_USERNAME=foo STEAM_PASSWORD=bar ./run.sh --dry-run
 
 ## 📝 Lembretes de Configuração
 
-- Copie `config_example.py` para `config.py` e preencha com credenciais reais (não faça commit do arquivo).
+- Preferido: copie `.env.example` para `.env` e preencha suas credenciais (não faça commit de `.env`).
 - Variáveis de ambiente têm precedência. Use `USERNAME`/`PASSWORD` ou `STEAM_USERNAME`/`STEAM_PASSWORD`. `STEAM_API_KEY` é opcional porém recomendado.
-- Arquivos `.env` são suportados ao executar via UV; os valores do `.env` funcionam como variáveis de ambiente.
+- O `config.py` legado ainda é suportado se presente, mas é desencorajado.
 
 ---
 
