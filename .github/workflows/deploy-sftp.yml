@@ -3,7 +3,7 @@ name: Deploy site via SFTP
 #   SFTP_SERVER: e.g. ftp.bebitterbebetter.com.br
 #   SFTP_USERNAME: hosting username
 #   SFTP_PASSWORD: hosting password
-#   SFTP_REMOTE_DIR: e.g. /home/.../public_html/idler
+#   SFTP_REMOTE_DIR: e.g. idler (for subdomain deployment)
 #   SFTP_PORT: "21" for FTP or "22" for SFTP
 #   SFTP_PROTOCOL: override protocol (one of ftp|ftps|sftp). If unset, auto: 21=>ftps, else sftp
 # Optional:
@@ -100,6 +100,7 @@ jobs:
           dangerous-clean-slate: true
           log-level: verbose
           timeout: 60000
+          security: loose
           exclude: |
             **/.git*
             **/.git*/**
