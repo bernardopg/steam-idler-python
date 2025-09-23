@@ -1,8 +1,8 @@
 title: Steam Idle Bot Docs
 markdown: kramdown
 theme: null
-baseurl: "/steam-idler-python"
-url: "https://bernardopg.github.io"
+baseurl: ""
+url: "https://idler.bebitterbebetter.com.br"
 exclude:
   - ../.github
   - ../tests
