@@ -7,7 +7,7 @@ requires-python = ">=3.9"
 dependencies = [
     "cachetools==6.1.0",
     "certifi==2025.6.15",
-    "charset-normalizer==3.4.2",
+    "charset-normalizer==3.4.3",
     "eventemitter==0.2.0",
     "gevent==25.5.1",
     "gevent-eventemitter==2.1",
