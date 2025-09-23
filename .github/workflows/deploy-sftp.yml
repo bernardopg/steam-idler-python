@@ -13,8 +13,8 @@ on:
   push:
     branches: ["main"]
     paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-sftp.yml'
+      - "docs/**"
+      - ".github/workflows/deploy-sftp.yml"
 
 jobs:
   build-and-deploy:
@@ -36,6 +36,17 @@ jobs:
       - name: List built files (debug)
         run: |
           echo "Built files:" && ls -lah _site | sed -n '1,200p'
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          fail=0
+          if [ -z "${{ secrets.SFTP_SERVER }}" ]; then echo "::error title=Missing secret::SFTP_SERVER is not set"; fail=1; fi
+          if [ -z "${{ secrets.SFTP_USERNAME }}" ]; then echo "::error title=Missing secret::SFTP_USERNAME is not set"; fail=1; fi
+          if [ -z "${{ secrets.SFTP_PASSWORD }}" ]; then echo "::error title=Missing secret::SFTP_PASSWORD is not set"; fail=1; fi
+          if [ -z "${{ secrets.SFTP_REMOTE_DIR }}" ]; then echo "::error title=Missing secret::SFTP_REMOTE_DIR is not set"; fail=1; fi
+          if [ -z "${{ secrets.SFTP_PORT }}" ]; then echo "::warning title=Missing secret::SFTP_PORT is not set; defaulting to 21 (FTP)"; fi
+          if [ "$fail" = "1" ]; then exit 1; fi
 
       - name: Deploy via SFTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
