@@ -44,8 +44,8 @@ Comece rapidamente com estes passos simples. Usaremos UV para um ambiente Python
 3. **Configure o Arquivo de Configuração**:
 
    ```bash
-   cp config_example.py config.py
-   # Abra config.py no seu editor e adicione seu usuário Steam, senha e chave API (opcional)
+   cp .env.example .env
+   # Abra .env no seu editor e adicione seu usuário Steam, senha e chave API (opcional)
    ```
 
 4. **Teste com um Dry Run**:

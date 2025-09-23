@@ -44,8 +44,8 @@ Get up and running fast with these simple steps. We'll use UV for a hassle-free 
 3. **Set Up Configuration**:
 
    ```bash
-   cp config_example.py config.py
-   # Open config.py in your editor and add your Steam username, password, and (optional) API key
+   cp .env.example .env
+   # Open .env and add your Steam username, password, and (optional) API key
    ```
 
 4. **Test with a Dry Run**:

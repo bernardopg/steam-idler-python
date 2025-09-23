@@ -64,7 +64,7 @@ git clone https://github.com/bernardopg/steam-idler-python.git && cd steam-idler
    - 🇺🇸 [English Documentation](docs/en/README.md)
    - 🇧🇷 [Documentação em Português](docs/pt-br/README.md)
 
-2. **Configure / Configure**: Copy `config_example.py` to `config.py` and add your credentials (don’t commit `config.py`)
+2. **Configure / Configure**: Copy `.env.example` to `.env` and fill your credentials (don’t commit `.env`)
 3. **Test / Teste**: Run `./run.sh --dry-run` to preview your setup
 4. **Launch / Inicie**: Run `./run.sh` to start the bot
 
