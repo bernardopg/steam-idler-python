@@ -40,7 +40,7 @@ jobs:
 
       - name: Parse combined SFTP/FTP secret (optional)
         id: sftp_vars
-        if: ${{ secrets.SFTP != '' }}
+        if: ${{ secrets.SFTP }}
         shell: bash
         run: |
           # Expect lines like KEY: value (supports both SFTP_* and FTP_* aliases)
