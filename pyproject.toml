@@ -25,7 +25,7 @@ dependencies = [
     "urllib3==2.5.0",
     "vdf==3.4",
     "zope-event==5.1",
-    "zope-interface==7.2",
+    "zope-interface==8.0",
 ]
 
 [dependency-groups]
