@@ -1,0 +1,8 @@
+title: Steam Idle Bot Docs
+markdown: kramdown
+theme: null
+exclude:
+  - ../.github
+  - ../tests
+  - ../src
+  - ../*.py

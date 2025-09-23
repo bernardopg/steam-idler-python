@@ -1,4 +1,9 @@
-# Steam Idle Bot
+---
+layout: default
+title: Steam Idle Bot (PT-BR)
+---
+
+## Steam Idle Bot
 
 > 🚀 Automatize o farm de tempo de jogo e drops de cartas Steam sem esforço. Sem mais supervisão manual – apenas configure e deixe rodar! Com recursos inteligentes como detecção de emblemas, suporte Steam Guard e uma configuração Python moderna, é a ferramenta definitiva para entusiastas da Steam.
 

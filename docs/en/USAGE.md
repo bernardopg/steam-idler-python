@@ -1,4 +1,9 @@
-# Usage Guide
+---
+layout: default
+title: Usage Guide (EN)
+---
+
+## Usage Guide
 
 Your quick reference for day-to-day Steam Idle Bot commands. For a deeper dive, check the main README.
 

@@ -1,4 +1,9 @@
-# Steam Idle Bot
+---
+layout: default
+title: Steam Idle Bot (EN)
+---
+
+## Steam Idle Bot
 
 > 🚀 Automate Steam playtime farming and trading card drops effortlessly. No more manual babysitting – just set it up and let it run! With smart features like badge awareness, Steam Guard support, and a sleek Python setup, it's the ultimate tool for Steam enthusiasts.
 

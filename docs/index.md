@@ -1,5 +1,4 @@
 ---
-# Front matter ensures Jekyll processes this file
 layout: default
 title: Steam Idle Bot Docs
 ---

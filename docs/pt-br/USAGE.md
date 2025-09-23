@@ -1,4 +1,9 @@
-# Guia de Uso
+---
+layout: default
+title: Guia de Uso (PT-BR)
+---
+
+## Guia de Uso
 
 Sua referência rápida para comandos diários do Steam Idle Bot. Para uma visão mais profunda, verifique o README principal.
 
