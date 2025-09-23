@@ -40,7 +40,7 @@ jobs:
 
       - name: Parse combined SFTP secret (optional)
         id: sftp_vars
-        if: ${{ secrets.SFTP }}
+        if: ${{ secrets.SFTP != '' }}
         shell: bash
         run: |
           # Expect lines like KEY: value
@@ -56,6 +56,17 @@ jobs:
           echo "PASSWORD=$PASSWORD" >> "$GITHUB_OUTPUT"
           echo "REMOTE_DIR=$REMOTE_DIR" >> "$GITHUB_OUTPUT"
           echo "PORT=$PORT" >> "$GITHUB_OUTPUT"
+
+      - name: Show deploy target (non-sensitive)
+        run: |
+          SERVER='${{ secrets.SFTP_SERVER || steps.sftp_vars.outputs.SERVER }}'
+          REMOTE_DIR='${{ secrets.SFTP_REMOTE_DIR || steps.sftp_vars.outputs.REMOTE_DIR }}'
+          PORT='${{ secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT }}'
+          PROTO='${{ secrets.SFTP_PROTOCOL || ( (secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT) == '21' && 'ftps' || 'sftp' ) }}'
+          echo "Protocol: $PROTO"
+          echo "Server: ${SERVER%%.*}... (masked)"
+          echo "Port: ${PORT:-21}"
+          echo "Remote dir: $REMOTE_DIR"
 
       - name: Validate required secrets
         shell: bash
@@ -85,3 +96,10 @@ jobs:
           server-dir: ${{ secrets.SFTP_REMOTE_DIR || steps.sftp_vars.outputs.REMOTE_DIR }}/
           dangerous-clean-slate: true
           log-level: verbose
+
+      - name: Upload built site as artifact (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-site
+          path: _site/
