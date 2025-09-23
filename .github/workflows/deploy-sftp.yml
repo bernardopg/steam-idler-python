@@ -5,6 +5,7 @@ name: Deploy site via SFTP
 #   SFTP_PASSWORD: hosting password
 #   SFTP_REMOTE_DIR: e.g. /home/.../public_html/idler
 #   SFTP_PORT: "21" for FTP or "22" for SFTP
+#   SFTP_PROTOCOL: override protocol (one of ftp|ftps|sftp). If unset, auto: 21=>ftps, else sftp
 # Optional:
 #   LFTP_PARALLEL: number of parallel transfers (not used by this action by default)
 
@@ -78,7 +79,7 @@ jobs:
           server: ${{ secrets.SFTP_SERVER || steps.sftp_vars.outputs.SERVER }}
           username: ${{ secrets.SFTP_USERNAME || steps.sftp_vars.outputs.USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD || steps.sftp_vars.outputs.PASSWORD }}
-          protocol: ${{ (secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT) == '21' && 'ftp' || 'sftp' }}
+          protocol: ${{ secrets.SFTP_PROTOCOL || ( (secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT) == '21' && 'ftps' || 'sftp' ) }}
           port: ${{ secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT }}
           local-dir: _site/
           server-dir: ${{ secrets.SFTP_REMOTE_DIR || steps.sftp_vars.outputs.REMOTE_DIR }}/
