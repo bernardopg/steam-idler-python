@@ -1,4 +1,12 @@
 name: Deploy site via SFTP
+# Requires repository secrets:
+#   SFTP_SERVER: e.g. ftp.bebitterbebetter.com.br
+#   SFTP_USERNAME: hosting username
+#   SFTP_PASSWORD: hosting password
+#   SFTP_REMOTE_DIR: e.g. /home/.../public_html/idler
+#   SFTP_PORT: "21" for FTP or "22" for SFTP
+# Optional:
+#   LFTP_PARALLEL: number of parallel transfers (not used by this action by default)
 
 on:
   workflow_dispatch:
@@ -35,8 +43,9 @@ jobs:
           server: ${{ secrets.SFTP_SERVER }}
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
-          protocol: sftp
+          protocol: ${{ secrets.SFTP_PORT == '21' && 'ftp' || 'sftp' }}
+          port: ${{ secrets.SFTP_PORT }}
           local-dir: _site/
-          server-dir: /home/u762591502/domains/bebitterbebetter.com.br/public_html/idler/
+          server-dir: ${{ secrets.SFTP_REMOTE_DIR }}/
           dangerous-clean-slate: true
           log-level: verbose
