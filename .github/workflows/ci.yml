@@ -6,13 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+# Principle of least privilege for GITHUB_TOKEN
+permissions:
+  contents: read
+
+# Cancel previous runs of the same ref to save minutes
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -56,3 +62,4 @@ jobs:
         with:
           name: coverage-xml-${{ matrix.python-version }}
           path: coverage.xml
+          retention-days: 7
