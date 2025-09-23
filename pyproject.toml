@@ -13,7 +13,7 @@ dependencies = [
     "gevent-eventemitter==2.1",
     "greenlet==3.2.3",
     "idna==3.10",
-    "protobuf==3.20.3",
+    "protobuf==6.32.1",
     "pydantic==2.9.2",
     "pydantic-settings==2.6.1",
     "pycryptodomex==3.23.0",
