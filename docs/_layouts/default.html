@@ -1,25 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{ page.title | default: site.title }}</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; max-width: 860px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
-      nav { margin-bottom: 2rem; }
-      nav a { margin-right: 1rem; }
-      pre { background: #f6f8fa; padding: 1rem; overflow: auto; }
-      code { background: #f6f8fa; padding: 0 .2rem; }
-    </style>
-  </head>
-  <body>
-    <nav>
-      <a href="/steam-idler-python/">Home</a>
-      <a href="/steam-idler-python/en/README.html">English</a>
-      <a href="/steam-idler-python/pt-br/README.html">Português (BR)</a>
-    </nav>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page.title | default: site.title }}</title>
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}" />
+  <meta name="color-scheme" content="dark light" />
+</head>
+
+<body>
+  <header>
+    <div class="container nav">
+      <div class="brand">
+        <span class="logo">🎮</span>
+        <a href="{{ '/' | relative_url }}" style="text-decoration:none;color:inherit">Steam Idle Bot</a>
+      </div>
+      <div class="nav-links">
+        <a href="{{ '/' | relative_url }}">Home</a>
+        <a href="{{ '/en/README.html' | relative_url }}">English</a>
+        <a href="{{ '/pt-br/README.html' | relative_url }}">Português (BR)</a>
+        <a href="https://github.com/bernardopg/steam-idler-python" target="_blank" rel="noopener">GitHub</a>
+        <button class="toggle" id="theme-toggle" aria-label="Toggle theme">🌗 Theme</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="container hero">
+    {% if page.title %}
+      <h1>{{ page.title }}</h1>
+      {% if page.description %}<p>{{ page.description }}</p>{% endif %}
+    {% else %}
+      <h1>Steam Idle Bot</h1>
+      <p class="muted">Automate Steam playtime farming and trading card drops.</p>
+      <div class="cta">
+        <a class="btn" href="{{ '/en/README.html' | relative_url }}">Get Started (EN)</a>
+        <a class="btn secondary" href="{{ '/pt-br/README.html' | relative_url }}">Começar (PT-BR)</a>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="container">
     <main>
-      {{ content }}
+      <article>
+        {{ content }}
+      </article>
     </main>
-  </body>
-  </html>
+    <footer>
+      <div class="grid">
+        <div class="col-12">
+          <div class="badge-row">
+            <span class="badge">Python 3.9+</span>
+            <span class="badge">MIT License</span>
+            <a class="badge" href="https://github.com/bernardopg/steam-idler-python">⭐ Star on GitHub</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // Theme toggle with localStorage
+    const key = 'theme-preference';
+    const getPref = () => localStorage.getItem(key) || 'auto';
+    const apply = (mode) => {
+      if (mode === 'auto') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', mode);
+    };
+    const setPref = (mode) => { localStorage.setItem(key, mode); apply(mode); };
+    apply(getPref());
+    document.getElementById('theme-toggle')?.addEventListener('click', () => {
+      const curr = getPref();
+      const next = curr === 'dark' ? 'light' : curr === 'light' ? 'auto' : 'dark';
+      setPref(next);
+    });
+  </script>
+</body>
+
+</html>

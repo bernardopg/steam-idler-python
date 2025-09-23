@@ -1,8 +1,12 @@
 title: Steam Idle Bot Docs
 markdown: kramdown
 theme: null
+baseurl: "/steam-idler-python"
+url: "https://bernardopg.github.io"
 exclude:
   - ../.github
   - ../tests
   - ../src
   - ../*.py
+  - vendor
+  - node_modules
