@@ -5,9 +5,6 @@ name: Deploy site via SFTP
 #   SFTP_PASSWORD: hosting password
 #   SFTP_REMOTE_DIR: e.g. idler (for subdomain deployment)
 #   SFTP_PORT: "21" for FTP or "22" for SFTP
-#   SFTP_PROTOCOL: override protocol (one of ftp|ftps|sftp). If unset, auto: 21=>ftps, else sftp
-# Optional:
-#   LFTP_PARALLEL: number of parallel transfers (not used by this action by default)
 
 on:
   workflow_dispatch:
@@ -38,65 +35,44 @@ jobs:
         run: |
           echo "Built files:" && ls -lah _site | sed -n '1,200p'
 
-      - name: Parse combined SFTP/FTP secret (optional)
-        id: sftp_vars
-        if: ${{ secrets.SFTP }}
-        shell: bash
-        run: |
-          # Expect lines like KEY: value (supports both SFTP_* and FTP_* aliases)
-          parse() { grep -E "^$1\s*:\s*" -i <<< "$INPUT" | head -n1 | sed -E 's/^[^:]+:\s*(.*)$/\1/' | tr -d '"\r' ; }
-          parseAny() { for key in "$@"; do v=$(parse "$key"); if [ -n "$v" ]; then echo "$v"; return; fi; done; }
-          INPUT='${{ secrets.SFTP }}'
-          SERVER=$(parseAny SFTP_SERVER FTP_HOST FTP_SERVER)
-          USERNAME=$(parseAny SFTP_USERNAME FTP_USER FTP_USERNAME)
-          PASSWORD=$(parseAny SFTP_PASSWORD FTP_PASS FTP_PASSWORD)
-          REMOTE_DIR=$(parseAny SFTP_REMOTE_DIR FTP_REMOTE_DIR)
-          PORT=$(parseAny SFTP_PORT FTP_PORT)
-          PROTOCOL=$(parseAny SFTP_PROTOCOL FTP_PROTOCOL)
-          echo "SERVER=$SERVER" >> "$GITHUB_OUTPUT"
-          echo "USERNAME=$USERNAME" >> "$GITHUB_OUTPUT"
-          echo "PASSWORD=$PASSWORD" >> "$GITHUB_OUTPUT"
-          echo "REMOTE_DIR=$REMOTE_DIR" >> "$GITHUB_OUTPUT"
-          echo "PORT=$PORT" >> "$GITHUB_OUTPUT"
-          echo "PROTOCOL=$PROTOCOL" >> "$GITHUB_OUTPUT"
-
       - name: Show deploy target (non-sensitive)
         run: |
-          SERVER='${{ secrets.SFTP_SERVER || steps.sftp_vars.outputs.SERVER }}'
-          REMOTE_DIR='${{ secrets.SFTP_REMOTE_DIR || steps.sftp_vars.outputs.REMOTE_DIR }}'
-          PORT='${{ secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT }}'
-          PROTO='${{ secrets.SFTP_PROTOCOL || steps.sftp_vars.outputs.PROTOCOL || ( (secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT) == '21' && 'ftps' || 'sftp' ) }}'
-          echo "Protocol: $PROTO"
-          echo "Server: ${SERVER%%.*}... (masked)"
-          echo "Port: ${PORT:-21}"
-          echo "Remote dir: $REMOTE_DIR"
+          echo "Protocol: FTP"
+          echo "Server: ${SFTP_SERVER%%.*}... (masked)"
+          echo "Port: ${SFTP_PORT:-21}"
+          echo "Remote dir: $SFTP_REMOTE_DIR"
+        env:
+          SFTP_SERVER: ${{ secrets.SFTP_SERVER }}
+          SFTP_REMOTE_DIR: ${{ secrets.SFTP_REMOTE_DIR }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
 
       - name: Validate required secrets
         shell: bash
         run: |
           fail=0
-          SERVER='${{ secrets.SFTP_SERVER || steps.sftp_vars.outputs.SERVER }}'
-          USERNAME='${{ secrets.SFTP_USERNAME || steps.sftp_vars.outputs.USERNAME }}'
-          PASSWORD='${{ secrets.SFTP_PASSWORD || steps.sftp_vars.outputs.PASSWORD }}'
-          REMOTE_DIR='${{ secrets.SFTP_REMOTE_DIR || steps.sftp_vars.outputs.REMOTE_DIR }}'
-          PORT='${{ secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT }}'
-          if [ -z "$SERVER" ]; then echo "::error title=Missing secret::SFTP_SERVER is not set (or missing in combined SFTP secret)"; fail=1; fi
-          if [ -z "$USERNAME" ]; then echo "::error title=Missing secret::SFTP_USERNAME is not set (or missing in combined SFTP secret)"; fail=1; fi
-          if [ -z "$PASSWORD" ]; then echo "::error title=Missing secret::SFTP_PASSWORD is not set (or missing in combined SFTP secret)"; fail=1; fi
-          if [ -z "$REMOTE_DIR" ]; then echo "::error title=Missing secret::SFTP_REMOTE_DIR is not set (or missing in combined SFTP secret)"; fail=1; fi
-          if [ -z "$PORT" ]; then echo "::warning title=Missing secret::SFTP_PORT::defaulting to 21 (FTP)"; fi
+          if [ -z "$SFTP_SERVER" ]; then echo "::error title=Missing secret::SFTP_SERVER is not set"; fail=1; fi
+          if [ -z "$SFTP_USERNAME" ]; then echo "::error title=Missing secret::SFTP_USERNAME is not set"; fail=1; fi
+          if [ -z "$SFTP_PASSWORD" ]; then echo "::error title=Missing secret::SFTP_PASSWORD is not set"; fail=1; fi
+          if [ -z "$SFTP_REMOTE_DIR" ]; then echo "::error title=Missing secret::SFTP_REMOTE_DIR is not set"; fail=1; fi
+          if [ -z "$SFTP_PORT" ]; then echo "::warning title=Missing secret::SFTP_PORT::defaulting to 21 (FTP)"; fi
           if [ "$fail" = "1" ]; then exit 1; fi
+        env:
+          SFTP_SERVER: ${{ secrets.SFTP_SERVER }}
+          SFTP_USERNAME: ${{ secrets.SFTP_USERNAME }}
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+          SFTP_REMOTE_DIR: ${{ secrets.SFTP_REMOTE_DIR }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ secrets.SFTP_SERVER || steps.sftp_vars.outputs.SERVER }}
-          username: ${{ secrets.SFTP_USERNAME || steps.sftp_vars.outputs.USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD || steps.sftp_vars.outputs.PASSWORD }}
+          server: ${{ secrets.SFTP_SERVER }}
+          username: ${{ secrets.SFTP_USERNAME }}
+          password: ${{ secrets.SFTP_PASSWORD }}
           protocol: ftp
-          port: ${{ secrets.SFTP_PORT || steps.sftp_vars.outputs.PORT || '21' }}
+          port: ${{ secrets.SFTP_PORT || '21' }}
           local-dir: _site/
-          server-dir: ${{ secrets.SFTP_REMOTE_DIR || steps.sftp_vars.outputs.REMOTE_DIR }}/
+          server-dir: ${{ secrets.SFTP_REMOTE_DIR }}/
           dangerous-clean-slate: true
           log-level: verbose
           timeout: 60000
