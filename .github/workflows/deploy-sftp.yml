@@ -64,7 +64,7 @@ jobs:
           SFTP_PORT: ${{ secrets.SFTP_PORT }}
 
       - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
           server: ${{ secrets.SFTP_SERVER }}
           username: ${{ secrets.SFTP_USERNAME }}
