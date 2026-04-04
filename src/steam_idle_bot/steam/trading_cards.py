@@ -80,7 +80,11 @@ class TradingCardDetector:
             data = response.json()
 
             if str(app_id) not in data or not data[str(app_id)]["success"]:
-                raise TradingCardDetectionError(f"Failed to get app details for {app_id}")
+                # Steam returns unsuccessful responses for some DLC/retired apps.
+                # Treat those as "no trading cards" and cache the result to avoid
+                # retrying the same known misses on every refresh cycle.
+                self._remember(app_id, False)
+                return False
 
             categories = data[str(app_id)].get("data", {}).get("categories", [])
             has_cards = any(cat.get("id") == self.TRADING_CARDS_CATEGORY_ID for cat in categories)
@@ -91,13 +95,9 @@ class TradingCardDetector:
         except (requests.exceptions.Timeout, TimeoutError) as err:
             raise SteamAPITimeoutError(f"Timeout checking trading cards for app {app_id}") from err
         except requests.exceptions.RequestException as err:
-            raise TradingCardDetectionError(
-                f"Network error checking trading cards for app {app_id}: {err}"
-            ) from err
+            raise TradingCardDetectionError(f"Network error checking trading cards for app {app_id}: {err}") from err
         except Exception as err:  # noqa: BLE001 - broad for resilience
-            raise TradingCardDetectionError(
-                f"Error checking trading cards for app {app_id}: {err}"
-            ) from err
+            raise TradingCardDetectionError(f"Error checking trading cards for app {app_id}: {err}") from err
 
     def filter_games_with_trading_cards(
         self,
@@ -122,14 +122,17 @@ class TradingCardDetector:
         checks = 0
         for _i, game_id in enumerate(game_ids):
             try:
+                was_cached = game_id in self._cache
                 if self.has_trading_cards(game_id):
                     filtered_games.append(game_id)
                     if len(filtered_games) >= max_games:
                         break
 
-                # Rate limiting
-                time.sleep(self.rate_limit_delay)
-                checks += 1
+                # Only rate limit actual network lookups. Cached results should be
+                # effectively free so periodic refreshes stay fast.
+                if not was_cached:
+                    time.sleep(self.rate_limit_delay)
+                    checks += 1
                 if max_checks is not None and checks >= max_checks:
                     break
 

@@ -164,6 +164,75 @@ def test_login_with_login_path() -> None:
     assert client.called is True
 
 
+def test_login_with_two_factor_callback() -> None:
+    wrapper = SteamClientWrapper(make_settings())
+
+    class LoginClient:
+        connected = True
+
+        def __init__(self) -> None:
+            self.steam_id = "1"
+            self.username = "u"
+            self.calls: list[dict[str, str | None]] = []
+
+        def login(
+            self,
+            username: str,
+            password: str,
+            login_key=None,
+            auth_code=None,
+            two_factor_code=None,
+            login_id=None,
+        ):
+            self.calls.append(
+                {
+                    "username": username,
+                    "password": password,
+                    "auth_code": auth_code,
+                    "two_factor_code": two_factor_code,
+                }
+            )
+            if len(self.calls) == 1:
+                return SimpleNamespace(name="AccountLoginDeniedNeedTwoFactor")
+            return SimpleNamespace(name="OK")
+
+    client = LoginClient()
+    wrapper._client = client
+
+    provider_calls: list[tuple[bool, bool]] = []
+
+    def provider(is_2fa: bool, code_mismatch: bool) -> str:
+        provider_calls.append((is_2fa, code_mismatch))
+        return "654321"
+
+    assert wrapper.login(auth_code_provider=provider) is True
+    assert provider_calls == [(True, False)]
+    assert client.calls[1]["two_factor_code"] == "654321"
+
+
+def test_login_with_cancelled_auth_code_raises() -> None:
+    wrapper = SteamClientWrapper(make_settings())
+
+    class LoginClient:
+        connected = True
+
+        def login(
+            self,
+            username: str,
+            password: str,
+            login_key=None,
+            auth_code=None,
+            two_factor_code=None,
+            login_id=None,
+        ):
+            return SimpleNamespace(name="AccountLogonDenied")
+
+    wrapper._client = LoginClient()
+
+    with pytest.raises(SteamAuthenticationError, match="cancelled"):
+        wrapper.login(auth_code_provider=lambda is_2fa, code_mismatch: None)
+
+
 def test_login_without_compatible_method() -> None:
     wrapper = SteamClientWrapper(make_settings())
     wrapper._client = object()

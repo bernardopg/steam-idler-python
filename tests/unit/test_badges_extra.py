@@ -118,12 +118,6 @@ def test_filter_logs_skipped_games(caplog):
 
     service2 = BadgeService(
         make_settings(),
-        session=DummySession(
-            response=DummyResponse(
-                data={
-                    "response": {"badges": [{"appid": 1, "border_color": 0, "cards_remaining": 0}]}
-                }
-            )
-        ),
+        session=DummySession(response=DummyResponse(data={"response": {"badges": [{"appid": 1, "border_color": 0, "cards_remaining": 0}]}})),
     )
     assert service2.filter_games_with_remaining_cards([1], "123") == []

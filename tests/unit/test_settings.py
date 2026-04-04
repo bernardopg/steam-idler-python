@@ -156,3 +156,23 @@ class TestSettings:
         assert settings.game_app_ids == [10, 20]
         assert settings.filter_trading_cards is False
         assert settings.log_level == "WARNING"
+
+    def test_save_to_env_file(self, tmp_path):
+        """Test persisting settings in dotenv format for the GUI."""
+        settings = Settings(
+            username="gui_user",
+            password="gui_pass",
+            game_app_ids=[10, 20],
+            exclude_app_ids=[30],
+            log_file="steam_card_idler.log",
+            max_checks=None,
+        )
+
+        target = settings.save_to_env_file(tmp_path / ".env")
+
+        saved = target.read_text(encoding="utf-8")
+        assert "USERNAME=gui_user" in saved
+        assert "PASSWORD=gui_pass" in saved
+        assert "GAME_APP_IDS=10,20" in saved
+        assert "EXCLUDE_APP_IDS=30" in saved
+        assert "MAX_CHECKS=" in saved

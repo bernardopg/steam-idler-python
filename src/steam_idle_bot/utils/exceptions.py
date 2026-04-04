@@ -1,7 +1,6 @@
 """Custom exceptions for Steam Idle Bot."""
 
 
-
 class SteamIdleBotError(Exception):
     """Base exception for all Steam Idle Bot errors."""
 

@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from .config.settings import Settings
@@ -18,9 +19,13 @@ from .utils.logger import setup_logging
 class SteamIdleBot:
     """Main Steam Idle Bot application."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, *, console_output: bool = True):
         self.settings = settings
-        self.logger = setup_logging(level=settings.log_level, log_file=settings.log_file)
+        self.logger = setup_logging(
+            level=settings.log_level,
+            log_file=settings.log_file,
+            console_output=console_output,
+        )
         self.client = SteamClientWrapper(settings)
         # Build retrying HTTP sessions for resilient HTTP calls
         store_session = TradingCardDetector.build_session()
@@ -41,6 +46,8 @@ class SteamIdleBot:
         self._idle_tracker = IdleTracker()
         self._games_to_idle: list[int] = []
         self._running = False
+        self._last_report = ""
+        self.report_callback: Callable[[str], None] | None = None
 
     def run(self, dry_run: bool = False) -> None:
         """Run the Steam Idle Bot."""
@@ -69,14 +76,10 @@ class SteamIdleBot:
 
         self.logger.info("Configuration:")
         self.logger.info(f"  - Filter Trading Cards: {self.settings.filter_trading_cards}")
-        self.logger.info(
-            f"  - Skip Completed Card Drops: {self.settings.filter_completed_card_drops}"
-        )
+        self.logger.info(f"  - Skip Completed Card Drops: {self.settings.filter_completed_card_drops}")
         self.logger.info(f"  - Use Owned Games: {self.settings.use_owned_games}")
         self.logger.info(f"  - Max Games to Idle: {self.settings.max_games_to_idle}")
-        self.logger.info(
-            f"  - Steam API Key: {'Set' if self.settings.steam_api_key else 'Not set'}"
-        )
+        self.logger.info(f"  - Steam API Key: {'Set' if self.settings.steam_api_key else 'Not set'}")
         self.logger.info(f"  - Games to idle: {len(games)} games")
         self.logger.info(f"  - Game IDs: {games}")
 
@@ -125,10 +128,13 @@ class SteamIdleBot:
 
         refresh_interval = 600  # 10 minutes
         last_refresh = time.time()
+        loop_sleep_seconds = 1
 
         while self._running:
             try:
-                self.client.sleep(60)  # Allow Steam client event loop to run
+                self.client.sleep(loop_sleep_seconds)  # Keep the loop responsive for GUI stop.
+                if not self._running:
+                    break
 
                 # Refresh games every 10 minutes
                 if time.time() - last_refresh >= refresh_interval:
@@ -155,6 +161,16 @@ class SteamIdleBot:
             except Exception as e:
                 self.logger.error(f"Error in main loop: {e}")
                 self.client.sleep(30)
+
+    def stop(self) -> None:
+        """Request the bot to stop at the next loop iteration."""
+        if not self._running:
+            return
+
+        self.logger.info("Stop requested")
+        self._running = False
+        with contextlib.suppress(Exception):
+            self.client.stop_idling()
 
     def _capture_initial_cards(self) -> None:
         """Capture the current number of cards remaining for each game."""
@@ -203,7 +219,11 @@ class SteamIdleBot:
 
         # Print report to console
         report = self._idle_tracker.format_report()
-        print(report)
+        self._last_report = report
+        if self.report_callback:
+            self.report_callback(report)
+        else:
+            print(report)
 
         # Save report to file
         logs_dir = Path("logs")
@@ -211,6 +231,11 @@ class SteamIdleBot:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         report_path = logs_dir / f"idle_report_{timestamp}.txt"
         self._idle_tracker.save_report(str(report_path))
+
+    @property
+    def last_report(self) -> str:
+        """Return the most recent session report."""
+        return self._last_report
 
     def _cleanup(self) -> None:
         """Clean up resources."""
@@ -259,6 +284,12 @@ Examples:
     parser.add_argument("--config", type=str, help="Path to configuration file")
 
     parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the desktop GUI instead of the terminal workflow",
+    )
+
+    parser.add_argument(
         "--no-cache",
         action="store_true",
         help="Disable persistent trading-card cache",
@@ -291,6 +322,12 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
+        if args.gui:
+            from .gui import launch_gui
+
+            launch_gui(config_path=args.config)
+            return
+
         # Load settings
         settings_path = None
         if args.config:

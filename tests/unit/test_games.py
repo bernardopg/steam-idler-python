@@ -80,9 +80,7 @@ def test_get_games_to_idle_does_not_scrape_after_badge_success():
 
     class _FailOnScrape:
         def has_remaining_drops(self, app_id, steam_id):
-            raise AssertionError(
-                f"unexpected scraping call for app {app_id} and steam_id {steam_id}"
-            )
+            raise AssertionError(f"unexpected scraping call for app {app_id} and steam_id {steam_id}")
 
     manager.card_drop_checker = _FailOnScrape()
 
@@ -102,10 +100,7 @@ def test_get_games_to_idle_logs_drop_filter_source_badge_service():
     games = manager.get_games_to_idle("123")
 
     assert games == [220, 333]
-    assert (
-        manager.detailed_logger.log_filtering_process.call_args.kwargs["drop_filter_source"]
-        == "badge_service"
-    )
+    assert manager.detailed_logger.log_filtering_process.call_args.kwargs["drop_filter_source"] == "badge_service"
 
 
 def test_get_games_to_idle_logs_drop_filter_source_missing_steam_id():
@@ -118,10 +113,7 @@ def test_get_games_to_idle_logs_drop_filter_source_missing_steam_id():
     games = manager.get_games_to_idle(None)
 
     assert games == [220, 300]
-    assert (
-        manager.detailed_logger.log_filtering_process.call_args.kwargs["drop_filter_source"]
-        == "skipped_missing_steam_id"
-    )
+    assert manager.detailed_logger.log_filtering_process.call_args.kwargs["drop_filter_source"] == "skipped_missing_steam_id"
 
 
 def test_get_games_to_idle_skips_badge_filter_without_api_key():

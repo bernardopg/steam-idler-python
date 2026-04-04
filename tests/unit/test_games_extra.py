@@ -83,9 +83,7 @@ def test_get_owned_games_uses_cache():
 
 
 def test_get_owned_games_without_api_uses_config():
-    manager = make_manager(
-        make_settings(steam_api_key=None, use_owned_games=True, game_app_ids=[9])
-    )
+    manager = make_manager(make_settings(steam_api_key=None, use_owned_games=True, game_app_ids=[9]))
     assert manager.get_owned_games("123") == [9]
 
 

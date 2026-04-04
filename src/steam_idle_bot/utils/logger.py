@@ -1,7 +1,6 @@
 """Structured logging configuration with rich formatting and file output."""
 
 import logging
-from typing import Optional
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -14,7 +13,8 @@ class SteamIdleLogger:
         self,
         name: str = "steam_idle_bot",
         level: str = "INFO",
-        log_file: Optional[str] = None,
+        log_file: str | None = None,
+        console_output: bool = True,
     ):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(getattr(logging, level.upper()))
@@ -28,15 +28,16 @@ class SteamIdleLogger:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-        # Console handler with rich formatting
-        console_handler = RichHandler(
-            console=Console(stderr=True),
-            show_time=True,
-            show_path=False,
-            rich_tracebacks=True,
-        )
-        console_handler.setLevel(getattr(logging, level.upper()))
-        self.logger.addHandler(console_handler)
+        if console_output:
+            # Console handler with rich formatting
+            console_handler = RichHandler(
+                console=Console(stderr=True),
+                show_time=True,
+                show_path=False,
+                rich_tracebacks=True,
+            )
+            console_handler.setLevel(getattr(logging, level.upper()))
+            self.logger.addHandler(console_handler)
 
         # File handler if specified
         if log_file:
@@ -50,9 +51,18 @@ class SteamIdleLogger:
         return self.logger
 
 
-def setup_logging(level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
+def setup_logging(
+    level: str = "INFO",
+    log_file: str | None = None,
+    *,
+    console_output: bool = True,
+) -> logging.Logger:
     """Set up global logging configuration."""
-    logger = SteamIdleLogger(level=level, log_file=log_file).get_logger()
+    logger = SteamIdleLogger(
+        level=level,
+        log_file=log_file,
+        console_output=console_output,
+    ).get_logger()
 
     # Log startup information
     logger.info("Steam Idle Bot starting...")

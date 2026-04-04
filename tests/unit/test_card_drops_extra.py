@@ -67,9 +67,7 @@ def test_build_gamecards_url_variants(steam_id, expected):
 def test_build_gamecards_url_empty_errors():
     with pytest.raises(ValueError):
         CardDropChecker._build_gamecards_url("   ", 10)
-    assert CardDropChecker._build_gamecards_url("profiles/", 10).endswith(
-        "/id/profiles/gamecards/10/"
-    )
+    assert CardDropChecker._build_gamecards_url("profiles/", 10).endswith("/id/profiles/gamecards/10/")
 
 
 @pytest.mark.parametrize(

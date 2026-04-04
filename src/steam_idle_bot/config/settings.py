@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import (
@@ -11,7 +11,6 @@ from pydantic_settings import (
     EnvSettingsSource,
     SettingsConfigDict,
 )
-
 
 LIST_FIELDS = {"game_app_ids", "exclude_app_ids"}
 
@@ -55,9 +54,7 @@ def _prepare_special_field_value(field_name: str, value: Any) -> tuple[bool, Any
 class FlexibleEnvSettingsSource(EnvSettingsSource):
     """Environment source with tolerant parsing for list/int fields."""
 
-    def prepare_field_value(
-        self, field_name: str, field: Any, value: Any, value_is_complex: bool
-    ) -> Any:
+    def prepare_field_value(self, field_name: str, field: Any, value: Any, value_is_complex: bool) -> Any:
         handled, parsed_value = _prepare_special_field_value(field_name, value)
         if handled:
             return parsed_value
@@ -68,9 +65,7 @@ class FlexibleEnvSettingsSource(EnvSettingsSource):
 class FlexibleDotEnvSettingsSource(DotEnvSettingsSource):
     """Dotenv source with tolerant parsing for list/int fields."""
 
-    def prepare_field_value(
-        self, field_name: str, field: Any, value: Any, value_is_complex: bool
-    ) -> Any:
+    def prepare_field_value(self, field_name: str, field: Any, value: Any, value_is_complex: bool) -> Any:
         handled, parsed_value = _prepare_special_field_value(field_name, value)
         if handled:
             return parsed_value
@@ -90,19 +85,13 @@ class Settings(BaseSettings):
         default=[570, 730],
         description="Default game IDs to idle when not using owned games",
     )
-    filter_trading_cards: bool = Field(
-        default=True, description="Only idle games that have Steam trading cards"
-    )
-    use_owned_games: bool = Field(
-        default=True, description="Automatically use games from Steam library"
-    )
+    filter_trading_cards: bool = Field(default=True, description="Only idle games that have Steam trading cards")
+    use_owned_games: bool = Field(default=True, description="Automatically use games from Steam library")
     filter_completed_card_drops: bool = Field(
         default=True,
         description="Skip games that have already dropped all available trading cards",
     )
-    exclude_app_ids: list[int] = Field(
-        default_factory=list, description="Always ignore these app IDs"
-    )
+    exclude_app_ids: list[int] = Field(default_factory=list, description="Always ignore these app IDs")
     max_games_to_idle: int = Field(
         default=30,
         ge=1,
@@ -111,7 +100,7 @@ class Settings(BaseSettings):
     )
 
     # Steam API
-    steam_api_key: Optional[str] = Field(
+    steam_api_key: str | None = Field(
         default=None,
         description="Steam Web API key for better functionality",
     )
@@ -122,12 +111,10 @@ class Settings(BaseSettings):
         pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
         description="Logging level",
     )
-    log_file: Optional[str] = Field(default=None, description="Optional log file path")
+    log_file: str | None = Field(default=None, description="Optional log file path")
 
     # Performance
-    api_timeout: int = Field(
-        default=10, ge=1, le=60, description="Timeout for API requests in seconds"
-    )
+    api_timeout: int = Field(default=10, ge=1, le=60, description="Timeout for API requests in seconds")
     rate_limit_delay: float = Field(
         default=0.5,
         ge=0.1,
@@ -152,7 +139,7 @@ class Settings(BaseSettings):
     )
 
     # Filtering controls
-    max_checks: Optional[int] = Field(
+    max_checks: int | None = Field(
         default=None,
         ge=1,
         le=10000,
@@ -164,9 +151,7 @@ class Settings(BaseSettings):
     )
 
     # Security
-    enable_encryption: bool = Field(
-        default=False, description="Enable encryption for stored credentials"
-    )
+    enable_encryption: bool = Field(default=False, description="Enable encryption for stored credentials")
 
     @field_validator("username", "password")
     @classmethod
@@ -176,10 +161,7 @@ class Settings(BaseSettings):
             v = v.strip()
             if v.lower() in {"", "your_steam_username", "your_steam_password"}:
                 field_name = getattr(info, "field_name", "credential")
-                raise ValueError(
-                    f"Invalid {field_name}: please provide real credentials, "
-                    f"not placeholder values from config_example.py"
-                )
+                raise ValueError(f"Invalid {field_name}: please provide real credentials, not placeholder values from config_example.py")
         return v
 
     @field_validator("game_app_ids", mode="before")
@@ -219,9 +201,7 @@ class Settings(BaseSettings):
         source_kwargs = {
             "case_sensitive": settings_cls.model_config.get("case_sensitive"),
             "env_prefix": settings_cls.model_config.get("env_prefix"),
-            "env_nested_delimiter": settings_cls.model_config.get(
-                "env_nested_delimiter"
-            ),
+            "env_nested_delimiter": settings_cls.model_config.get("env_nested_delimiter"),
             "env_ignore_empty": settings_cls.model_config.get("env_ignore_empty"),
             "env_parse_none_str": settings_cls.model_config.get("env_parse_none_str"),
             "env_parse_enums": settings_cls.model_config.get("env_parse_enums"),
@@ -240,7 +220,7 @@ class Settings(BaseSettings):
         )
 
     @classmethod
-    def load_from_file(cls, config_path: Optional[Path] = None) -> "Settings":
+    def load_from_file(cls, config_path: Path | None = None) -> "Settings":
         """Load settings from configuration file."""
         explicit_config_path = config_path is not None
         if config_path is None:
@@ -277,24 +257,66 @@ class Settings(BaseSettings):
                 return cls(**kwargs)
             if explicit_config_path:
                 raise ValueError(
-                    "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"
+                    "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"  # noqa: E501
                 )
         elif explicit_config_path:
             raise ValueError(
-                "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"
+                "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"  # noqa: E501
             )
 
         try:
             settings_kwargs: dict[str, Any] = {}
             return cls(**settings_kwargs)
         except ValidationError as exc:
-            missing_fields = {
-                error.get("loc", (None,))[0]
-                for error in exc.errors()
-                if error.get("type") == "missing"
-            }
+            missing_fields = {error.get("loc", (None,))[0] for error in exc.errors() if error.get("type") == "missing"}
             if "username" in missing_fields or "password" in missing_fields:
                 raise ValueError(
-                    "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"
+                    "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"  # noqa: E501
                 ) from exc
             raise
+
+    def save_to_env_file(self, path: Path | None = None) -> Path:
+        """Persist the current settings to a dotenv file for future runs."""
+        target = path or Path(".env")
+        data = self.model_dump()
+
+        env_mapping = {
+            "username": "USERNAME",
+            "password": "PASSWORD",
+            "game_app_ids": "GAME_APP_IDS",
+            "filter_trading_cards": "FILTER_TRADING_CARDS",
+            "use_owned_games": "USE_OWNED_GAMES",
+            "filter_completed_card_drops": "FILTER_COMPLETED_CARD_DROPS",
+            "exclude_app_ids": "EXCLUDE_APP_IDS",
+            "max_games_to_idle": "MAX_GAMES_TO_IDLE",
+            "steam_api_key": "STEAM_API_KEY",
+            "log_level": "LOG_LEVEL",
+            "log_file": "LOG_FILE",
+            "api_timeout": "API_TIMEOUT",
+            "rate_limit_delay": "RATE_LIMIT_DELAY",
+            "enable_card_cache": "ENABLE_CARD_CACHE",
+            "card_cache_path": "CARD_CACHE_PATH",
+            "card_cache_ttl_days": "CARD_CACHE_TTL_DAYS",
+            "max_checks": "MAX_CHECKS",
+            "skip_failures": "SKIP_FAILURES",
+            "enable_encryption": "ENABLE_ENCRYPTION",
+        }
+
+        lines: list[str] = []
+        for field_name, env_name in env_mapping.items():
+            value = data.get(field_name)
+            if value is None:
+                lines.append(f"{env_name}=")
+                continue
+
+            if isinstance(value, list):
+                rendered = ",".join(str(item) for item in value)
+            elif isinstance(value, bool):
+                rendered = "true" if value else "false"
+            else:
+                rendered = str(value)
+
+            lines.append(f"{env_name}={rendered}")
+
+        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return target

@@ -49,9 +49,7 @@ class BadgeService:
     def clear_cache(self) -> None:  # pragma: no cover - no caching yet
         """Clear cached badge data (placeholder for future use)."""
 
-    def filter_games_with_remaining_cards(
-        self, game_ids: Iterable[int], steam_id: str
-    ) -> list[int]:
+    def filter_games_with_remaining_cards(self, game_ids: Iterable[int], steam_id: str) -> list[int]:
         """Return IDs that still have trading cards available to drop."""
         cards_remaining = self._fetch_cards_remaining(steam_id)
         filtered: list[int] = []

@@ -68,9 +68,7 @@ class GameManager:
         except Exception as e:
             logger.error(f"Error getting owned games: {e}")
             games = self.settings.game_app_ids
-            self.detailed_logger.log_api_results(
-                "owned_games", games, {"source": "config_fallback", "error": str(e)}
-            )
+            self.detailed_logger.log_api_results("owned_games", games, {"source": "config_fallback", "error": str(e)})
             return games
 
     def _get_owned_games_via_api(self, steam_id: str) -> list[int]:
@@ -143,9 +141,7 @@ class GameManager:
             )
             logger.info(f"Found {len(games_with_cards)} games with trading cards")
 
-            self.detailed_logger.log_api_results(
-                "trading_cards", games_with_cards, {"total_checked": len(all_games)}
-            )
+            self.detailed_logger.log_api_results("trading_cards", games_with_cards, {"total_checked": len(all_games)})
 
         # Filter completed card drops
         games_with_drops = games_with_cards
@@ -155,18 +151,14 @@ class GameManager:
             drop_filter_source = "skipped_missing_steam_id"
         else:
             logger.info("Filtering completed card drops...")
-            games_with_drops, drop_filter_source = self._filter_completed_card_drops(
-                games_with_cards, steam_id
-            )
+            games_with_drops, drop_filter_source = self._filter_completed_card_drops(games_with_cards, steam_id)
             logger.info(f"After filtering drops: {len(games_with_drops)} games remaining")
 
         # Remove user-specified exclusions
         excluded_games = []
         if self.settings.exclude_app_ids:
             before = len(games_with_drops)
-            games_with_drops = [
-                gid for gid in games_with_drops if gid not in self.settings.exclude_app_ids
-            ]
+            games_with_drops = [gid for gid in games_with_drops if gid not in self.settings.exclude_app_ids]
             excluded_games = [gid for gid in all_games if gid in self.settings.exclude_app_ids]
             removed = before - len(games_with_drops)
             if removed:
@@ -194,9 +186,7 @@ class GameManager:
 
         if not final_games:
             logger.warning("No games found to idle after filtering")
-            if self.settings.filter_completed_card_drops and len(games_with_drops) == len(
-                games_with_cards
-            ):
+            if self.settings.filter_completed_card_drops and len(games_with_drops) == len(games_with_cards):
                 # If filtering completed drops but no games remain and we couldn't actually filter,
                 # try with a more lenient approach assuming games have drops
                 # if status couldn't be determined
@@ -222,9 +212,7 @@ class GameManager:
         if self.badge_service:
             self.badge_service.clear_cache()
 
-    def _filter_completed_card_drops(
-        self, games: list[int], steam_id: str | None
-    ) -> tuple[list[int], str]:
+    def _filter_completed_card_drops(self, games: list[int], steam_id: str | None) -> tuple[list[int], str]:
         if not games:
             return games, "skipped_no_candidate_games"
 
@@ -235,9 +223,7 @@ class GameManager:
         if self.badge_service and self.settings.steam_api_key:
             try:
                 logger.info("Consulting badge service for authoritative data...")
-                badge_filtered = self.badge_service.filter_games_with_remaining_cards(
-                    games, steam_id
-                )
+                badge_filtered = self.badge_service.filter_games_with_remaining_cards(games, steam_id)
                 logger.info(
                     "Badge service completed: %s/%s games have remaining drops",
                     len(badge_filtered),

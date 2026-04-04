@@ -75,9 +75,7 @@ class DetailedLogger:
 
         logging.getLogger(__name__).info(f"Detailed filtering log saved to: {filename}")
 
-    def log_scraping_result(
-        self, app_id: int, steam_id: str, has_drops: bool, content_preview: str = ""
-    ) -> None:
+    def log_scraping_result(self, app_id: int, steam_id: str, has_drops: bool, content_preview: str = "") -> None:
         """Log individual scraping results."""
         log_entry = {
             "timestamp": datetime.now().isoformat(),

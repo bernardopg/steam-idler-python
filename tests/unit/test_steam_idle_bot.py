@@ -140,5 +140,5 @@ def test_main_loop_refreshes_games_when_library_changes(monkeypatch):
     bot._main_loop([111, 222])
 
     assert refreshed == [[222, 444]]
-    assert client.sleep_calls == [60]
+    assert client.sleep_calls == [1]
     assert manager.calls == [client.steam_id]

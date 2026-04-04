@@ -1,5 +1,6 @@
 """Tests for trading card detection."""
 
+import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -69,17 +70,16 @@ class TestTradingCardDetector:
         assert detector._cache[123] is False
 
     @patch("steam_idle_bot.steam.trading_cards.requests.get")
-    def test_has_trading_cards_api_failure(self, mock_get):
-        """Test API failure handling."""
+    def test_has_trading_cards_api_failure_is_cached_as_false(self, mock_get):
+        """Steam appdetails misses should be treated as a cached no-card result."""
         mock_response = Mock()
         mock_response.json.return_value = {"123": {"success": False}}
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         detector = TradingCardDetector()
-
-        with pytest.raises(TradingCardDetectionError):
-            detector.has_trading_cards(123)
+        assert detector.has_trading_cards(123) is False
+        assert detector._cache[123] is False
 
     @patch("steam_idle_bot.steam.trading_cards.requests.get")
     def test_has_trading_cards_timeout(self, mock_get):
@@ -111,6 +111,17 @@ class TestTradingCardDetector:
         result = detector.filter_games_with_trading_cards(games, max_games=2)
 
         assert result == [1, 3]
+
+    def test_filter_games_with_trading_cards_skips_sleep_for_cached_results(self):
+        """Cached trading-card checks should not incur rate-limit delay."""
+        detector = TradingCardDetector(rate_limit_delay=0.5, cache_enabled=False)
+        detector._cache = {1: True, 2: False, 3: True}
+
+        with patch.object(time, "sleep") as mock_sleep:
+            result = detector.filter_games_with_trading_cards([1, 2, 3], max_games=3)
+
+        assert result == [1, 3]
+        mock_sleep.assert_not_called()
 
     def test_clear_cache(self):
         """Test cache clearing."""

@@ -164,9 +164,7 @@ def test_run_normal_mode_failure_paths(monkeypatch):
     bot = _build_bot()
     bot.client.start_ok = False
     bot._run_normal_mode()
-    assert any(
-        "Failed to start idling" in msg for level, msg in bot.logger.messages if level == "error"
-    )
+    assert any("Failed to start idling" in msg for level, msg in bot.logger.messages if level == "error")
 
 
 def test_main_loop_handles_refresh_and_disconnect(monkeypatch):
@@ -174,6 +172,7 @@ def test_main_loop_handles_refresh_and_disconnect(monkeypatch):
     bot._running = True
 
     def get_games(_steam_id):
+        bot._running = False
         return [10, 30]
 
     bot.game_manager.get_games_to_idle = get_games
@@ -181,10 +180,7 @@ def test_main_loop_handles_refresh_and_disconnect(monkeypatch):
     seq = iter([0.0, 700.0, 700.0])
     monkeypatch.setattr("time.time", lambda: next(seq))
 
-    def fake_sleep(seconds):
-        bot._running = False
-
-    bot.client.sleep = fake_sleep
+    bot.client.sleep = lambda seconds: None
     bot._main_loop([10, 20])
 
     assert bot.client.refresh_calls == [[10, 30]]
@@ -219,7 +215,12 @@ def test_capture_cards_paths():
     bot = _build_bot()
     bot.game_manager.badge_service = DummyBadgeService({10: 3, 20: 1})
     bot._capture_initial_cards()
+    bot._idle_tracker.start_session([10, 20])
+    assert bot._idle_tracker.games[10].cards_before == 3
+    assert bot._idle_tracker.games[20].cards_before == 1
     bot._capture_final_cards()
+    assert bot._idle_tracker.games[10].cards_after == 3
+    assert bot._idle_tracker.games[20].cards_after == 1
 
     bot.game_manager.badge_service = None
     bot.game_manager._card_counts = {10: 2}
@@ -253,6 +254,7 @@ def test_create_parser_parses_flags():
     parser = create_parser()
     args = parser.parse_args(
         [
+            "--gui",
             "--dry-run",
             "--no-trading-cards",
             "--max-games",
@@ -266,6 +268,7 @@ def test_create_parser_parses_flags():
             "--keep-completed-drops",
         ]
     )
+    assert args.gui is True
     assert args.dry_run is True
     assert args.no_trading_cards is True
     assert args.max_games == 5
@@ -278,6 +281,7 @@ def test_create_parser_parses_flags():
 
 def test_main_applies_overrides(monkeypatch):
     args = SimpleNamespace(
+        gui=False,
         config="config.py",
         no_trading_cards=True,
         max_games=4,
@@ -317,6 +321,7 @@ def test_main_applies_overrides(monkeypatch):
 def test_main_keyboard_interrupt_and_fatal(monkeypatch, capsys):
     parser = SimpleNamespace(
         parse_args=lambda: SimpleNamespace(
+            gui=False,
             config=None,
             no_trading_cards=False,
             max_games=None,
@@ -350,6 +355,34 @@ def test_main_keyboard_interrupt_and_fatal(monkeypatch, capsys):
     assert exits == [1]
 
 
+def test_main_gui_launches_without_loading_settings(monkeypatch):
+    parser = SimpleNamespace(
+        parse_args=lambda: SimpleNamespace(
+            gui=True,
+            config="cfg.py",
+            no_trading_cards=False,
+            max_games=None,
+            no_cache=False,
+            max_checks=None,
+            skip_failures=False,
+            keep_completed_drops=False,
+            dry_run=False,
+        )
+    )
+
+    launched = {}
+
+    monkeypatch.setattr(main_module, "create_parser", lambda: parser)
+    monkeypatch.setattr(
+        "steam_idle_bot.gui.launch_gui",
+        lambda config_path=None: launched.setdefault("path", config_path),
+    )
+
+    main()
+
+    assert launched["path"] == "cfg.py"
+
+
 def test_dunder_main_executes_main(monkeypatch):
     called = {"n": 0}
     monkeypatch.setattr(main_module, "main", lambda: called.__setitem__("n", 1))
@@ -372,12 +405,8 @@ def test_init_without_badge_service():
 def test_show_session_report_ignores_capture_errors(monkeypatch, tmp_path):
     bot = _build_bot()
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        main_module, "time", SimpleNamespace(strftime=lambda fmt: "20260101_010101")
-    )
-    monkeypatch.setattr(
-        bot, "_capture_final_cards", lambda: (_ for _ in ()).throw(RuntimeError("x"))
-    )
+    monkeypatch.setattr(main_module, "time", SimpleNamespace(strftime=lambda fmt: "20260101_010101"))
+    monkeypatch.setattr(bot, "_capture_final_cards", lambda: (_ for _ in ()).throw(RuntimeError("x")))
     bot._show_session_report()
 
 

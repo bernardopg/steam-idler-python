@@ -23,9 +23,7 @@ def test_load_from_file_missing_path_without_file(tmp_path, monkeypatch):
 
 def test_load_from_file_reraises_non_missing_validation_error(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".env").write_text(
-        "USERNAME=u\nPASSWORD=p\nMAX_GAMES_TO_IDLE=0\n", encoding="utf-8"
-    )
+    (tmp_path / ".env").write_text("USERNAME=u\nPASSWORD=p\nMAX_GAMES_TO_IDLE=0\n", encoding="utf-8")
 
     with pytest.raises(Exception):  # noqa: B017
         Settings.load_from_file()

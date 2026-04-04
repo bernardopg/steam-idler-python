@@ -1,8 +1,10 @@
 """Steam client wrapper with improved error handling and logging."""
 
+import builtins
 import logging
 import time
-from typing import Any, Optional
+from collections.abc import Callable
+from typing import Any
 
 from ..config.settings import Settings
 from ..utils.exceptions import (
@@ -13,15 +15,18 @@ from ..utils.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+AuthCodeProvider = Callable[[bool, bool], str | None]
+
 
 class SteamClientWrapper:
     """Wrapper for Steam client with enhanced functionality."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._client: Optional[Any] = None
-        self._steam_id: Optional[str] = None
-        self._username: Optional[str] = None
+        self._client: Any | None = None
+        self._steam_id: str | None = None
+        self._username: str | None = None
+        self.auth_code_provider: AuthCodeProvider | None = None
 
     def initialize(self) -> bool:
         """
@@ -44,7 +49,7 @@ class SteamClientWrapper:
             logger.error(f"Failed to initialize Steam client: {e}")
             return False
 
-    def login(self) -> bool:
+    def login(self, auth_code_provider: AuthCodeProvider | None = None) -> bool:
         """
         Login to Steam using configured credentials.
 
@@ -70,12 +75,21 @@ class SteamClientWrapper:
             logger.info("=" * 60)
             logger.info(f"Username: {self.settings.username}")
             logger.info("⚠️  IMPORTANT: Check your Steam Mobile App or Email")
-            logger.info("⚠️  Enter the 2FA code when prompted in the terminal")
+            if auth_code_provider or self.auth_code_provider:
+                logger.info("⚠️  Enter the authentication code in the active interface")
+            else:
+                logger.info("⚠️  Enter the 2FA code when prompted in the terminal")
             logger.info("⚠️  Use Ctrl+C to stop the bot at any time")
             logger.info("=" * 60)
 
-            # Try different login methods based on available API
-            if hasattr(self._client, "cli_login"):
+            provider = auth_code_provider or self.auth_code_provider
+
+            # Prefer the structured login API so GUI and CLI can share the same 2FA flow.
+            if hasattr(self._client, "login"):
+                result = self._login_with_auth_flow(provider)
+                if not result:
+                    raise SteamAuthenticationError("Login failed with login()")
+            elif hasattr(self._client, "cli_login"):
                 result = self._client.cli_login(
                     username=self.settings.username, password=self.settings.password
                 )
@@ -85,8 +99,6 @@ class SteamClientWrapper:
                 self._client.log_on(
                     username=self.settings.username, password=self.settings.password
                 )
-            elif hasattr(self._client, "login"):
-                self._client.login(username=self.settings.username, password=self.settings.password)
             else:
                 raise SteamAuthenticationError("No compatible login method found")
 
@@ -101,6 +113,93 @@ class SteamClientWrapper:
             return False
         except Exception as e:
             raise SteamAuthenticationError(f"Login failed: {e}") from e
+
+    def _login_with_auth_flow(
+        self, auth_code_provider: AuthCodeProvider | None
+    ) -> bool:
+        """Login with support for email/2FA code retries."""
+        if self._client is None:
+            raise SteamConnectionError("Steam client not initialized")
+
+        client = self._client
+        auth_code: str | None = None
+        two_factor_code: str | None = None
+
+        while True:
+            try:
+                result = client.login(
+                    username=self.settings.username,
+                    password=self.settings.password,
+                    auth_code=auth_code,
+                    two_factor_code=two_factor_code,
+                )
+            except TypeError:
+                if auth_code is not None or two_factor_code is not None:
+                    raise
+                result = client.login(
+                    username=self.settings.username,
+                    password=self.settings.password,
+                )
+
+            if self._login_result_is_success(result):
+                return True
+
+            auth_request = self._classify_auth_requirement(result)
+            if auth_request is None:
+                logger.error(f"Steam login failed with result: {result}")
+                return False
+
+            is_2fa, code_mismatch = auth_request
+            provider = auth_code_provider or self._prompt_for_auth_code
+            code = provider(is_2fa, code_mismatch)
+            if not code:
+                raise SteamAuthenticationError("Authentication code entry cancelled")
+
+            auth_code = None
+            two_factor_code = None
+            if is_2fa:
+                two_factor_code = code.strip()
+            else:
+                auth_code = code.strip()
+
+    @staticmethod
+    def _login_result_is_success(result: Any) -> bool:
+        """Interpret login results from different Steam client implementations."""
+        if result is None:
+            return True
+
+        name = getattr(result, "name", None)
+        if name == "OK":
+            return True
+
+        return result == 1
+
+    @staticmethod
+    def _classify_auth_requirement(result: Any) -> tuple[bool, bool] | None:
+        """Return (is_2fa, code_mismatch) when another auth code is required."""
+        result_name = getattr(result, "name", str(result))
+
+        if result_name == "AccountLoginDeniedNeedTwoFactor":
+            return True, False
+        if result_name == "TwoFactorCodeMismatch":
+            return True, True
+        if result_name == "AccountLogonDenied":
+            return False, False
+        if result_name == "InvalidLoginAuthCode":
+            return False, True
+
+        return None
+
+    @staticmethod
+    def _prompt_for_auth_code(is_2fa: bool, code_mismatch: bool) -> str | None:
+        """Prompt for an authentication code in the terminal."""
+        code_type = "2FA" if is_2fa else "email"
+        prompt = (
+            f"Incorrect {code_type} code. Enter a new code: "
+            if code_mismatch
+            else f"Enter {code_type} code: "
+        )
+        return builtins.input(prompt)
 
     def _update_user_info(self) -> None:
         """Update user information after login."""
@@ -199,7 +298,9 @@ class SteamClientWrapper:
                 self._client.sleep(seconds)
                 return
             except Exception as exc:
-                logger.debug(f"Steam client sleep failed, falling back to time.sleep: {exc}")
+                logger.debug(
+                    f"Steam client sleep failed, falling back to time.sleep: {exc}"
+                )
 
         time.sleep(seconds)
 
@@ -216,16 +317,16 @@ class SteamClientWrapper:
         return self.start_idling(game_ids)
 
     @property
-    def steam_id(self) -> Optional[str]:
+    def steam_id(self) -> str | None:
         """Get the Steam ID of the logged in user."""
         return self._steam_id
 
     @property
-    def username(self) -> Optional[str]:
+    def username(self) -> str | None:
         """Get the username of the logged in user."""
         return self._username
 
     @property
-    def client(self) -> Optional[Any]:
+    def client(self) -> Any | None:
         """Get the underlying Steam client."""
         return self._client

@@ -71,9 +71,7 @@ def test_save_cache_tolerates_write_errors(monkeypatch):
     detector = TradingCardDetector(cache_enabled=True, cache_path="/invalid/path/cards.json")
     detector._cache_data = {1: (True, 1.0)}
 
-    monkeypatch.setattr(
-        "os.makedirs", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("nope"))
-    )
+    monkeypatch.setattr("os.makedirs", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("nope")))
     detector._save_cache()
 
 

@@ -58,3 +58,41 @@ def test_idle_tracker_ignores_unknown_game_card_updates() -> None:
     tracker.set_cards_after(999, 1)
 
     assert 999 not in tracker.games
+    assert tracker._pending_cards_before[999] == 3
+    assert tracker._pending_cards_after[999] == 1
+
+
+def test_idle_tracker_applies_pending_card_updates_when_session_starts() -> None:
+    tracker = IdleTracker()
+
+    tracker.set_cards_before(10, 5)
+    tracker.set_cards_after(10, 2)
+    tracker.start_session([10])
+
+    assert tracker.games[10].cards_before == 5
+    assert tracker.games[10].cards_after == 2
+
+
+def test_idle_tracker_reports_unknown_drop_status_separately(tmp_path, monkeypatch) -> None:
+    tracker = IdleTracker()
+
+    times = iter([100.0, 160.0])
+    monkeypatch.setattr("time.time", lambda: next(times))
+
+    tracker.start_session([10, 20], game_names={10: "Known", 20: "Unknown"})
+    tracker.set_cards_before(10, 4)
+    tracker.set_cards_after(10, 4)
+    tracker.set_cards_before(20, 3)
+    tracker.end_session()
+
+    assert [g.app_id for g in tracker.games_without_drops] == [10]
+    assert [g.app_id for g in tracker.games_with_unknown_drops] == [20]
+
+    report = tracker.format_report()
+    assert "GAMES WITH UNKNOWN DROP STATUS" in report
+    assert "Total dropped (confirmed)" in report
+    assert "Cards: 3 → ? (❓ unknown)" in report
+
+    out_file = tmp_path / "reports" / "unknown.txt"
+    tracker.save_report(str(out_file))
+    assert out_file.exists()

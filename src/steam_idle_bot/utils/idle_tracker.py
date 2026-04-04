@@ -29,6 +29,11 @@ class GameIdleInfo:
         return max(0, self.cards_before - self.cards_after)
 
     @property
+    def drop_status_known(self) -> bool:
+        """Whether both before/after card counts are known for this game."""
+        return self.cards_before is not None and self.cards_after is not None
+
+    @property
     def idle_seconds(self) -> float:
         """Total seconds spent idling this game."""
         if self.start_time is None or self.end_time is None:
@@ -49,11 +54,11 @@ class IdleTracker:
         self.session_end: float | None = None
         self.games: dict[int, GameIdleInfo] = {}
         self.game_names: dict[int, str] = {}
+        self._pending_cards_before: dict[int, int] = {}
+        self._pending_cards_after: dict[int, int] = {}
         self.logger = logging.getLogger(__name__)
 
-    def start_session(
-        self, game_ids: list[int], game_names: dict[int, str] | None = None
-    ) -> None:
+    def start_session(self, game_ids: list[int], game_names: dict[int, str] | None = None) -> None:
         """Record the start of an idling session."""
         import time
 
@@ -61,11 +66,16 @@ class IdleTracker:
         if game_names:
             self.game_names.update(game_names)
         for app_id in game_ids:
-            self.games[app_id] = GameIdleInfo(
+            game = GameIdleInfo(
                 app_id=app_id,
                 name=self.game_names.get(app_id, ""),
                 start_time=self.session_start,
             )
+            if app_id in self._pending_cards_before:
+                game.cards_before = self._pending_cards_before[app_id]
+            if app_id in self._pending_cards_after:
+                game.cards_after = self._pending_cards_after[app_id]
+            self.games[app_id] = game
         self.logger.info(f"Idle tracker started for {len(game_ids)} games")
 
     def end_session(self) -> None:
@@ -75,19 +85,21 @@ class IdleTracker:
         self.session_end = time.time()
         for game in self.games.values():
             game.end_time = self.session_end
-        self.logger.info(
-            f"Idle tracker stopped, session duration: {self.session_minutes:.1f} minutes"
-        )
+        self.logger.info(f"Idle tracker stopped, session duration: {self.session_minutes:.1f} minutes")
 
     def set_cards_before(self, app_id: int, count: int) -> None:
         """Record the number of cards remaining before idling."""
         if app_id in self.games:
             self.games[app_id].cards_before = count
+            return
+        self._pending_cards_before[app_id] = count
 
     def set_cards_after(self, app_id: int, count: int) -> None:
         """Record the number of cards remaining after idling."""
         if app_id in self.games:
             self.games[app_id].cards_after = count
+            return
+        self._pending_cards_after[app_id] = count
 
     @property
     def session_seconds(self) -> float:
@@ -109,12 +121,17 @@ class IdleTracker:
     @property
     def games_with_drops(self) -> list[GameIdleInfo]:
         """Games that actually dropped cards."""
-        return [g for g in self.games.values() if g.cards_dropped > 0]
+        return [g for g in self.games.values() if g.drop_status_known and g.cards_dropped > 0]
 
     @property
     def games_without_drops(self) -> list[GameIdleInfo]:
         """Games that did not drop cards."""
-        return [g for g in self.games.values() if g.cards_dropped == 0]
+        return [g for g in self.games.values() if g.drop_status_known and g.cards_dropped == 0]
+
+    @property
+    def games_with_unknown_drops(self) -> list[GameIdleInfo]:
+        """Games whose drop status could not be determined."""
+        return [g for g in self.games.values() if not g.drop_status_known]
 
     def format_report(self) -> str:
         """Format a human-readable report of the idling session."""
@@ -128,28 +145,24 @@ class IdleTracker:
         # Session summary
         lines.append("📋 SESSION SUMMARY")
         lines.append("-" * 40)
-        start_str = (
-            datetime.fromtimestamp(self.session_start).strftime("%H:%M:%S")
-            if self.session_start
-            else "N/A"
-        )
-        end_str = (
-            datetime.fromtimestamp(self.session_end).strftime("%H:%M:%S")
-            if self.session_end
-            else "N/A"
-        )
+        start_str = datetime.fromtimestamp(self.session_start).strftime("%H:%M:%S") if self.session_start else "N/A"
+        end_str = datetime.fromtimestamp(self.session_end).strftime("%H:%M:%S") if self.session_end else "N/A"
         lines.append(f"  Start time:     {start_str}")
         lines.append(f"  End time:       {end_str}")
         lines.append(
             f"  Duration:       {self.session_minutes:.1f} minutes ({self.session_seconds:.0f} seconds)"  # noqa: E501
         )
         lines.append(f"  Games idled:    {len(self.games)}")
-        lines.append(f"  Total dropped:  {self.total_cards_dropped} card(s)")
+        total_label = "Total dropped"
+        if self.games_with_unknown_drops:
+            total_label = "Total dropped (confirmed)"
+        lines.append(f"  {total_label}:  {self.total_cards_dropped} card(s)")
         lines.append("")
 
         # Games with drops
         games_with = self.games_with_drops
         games_without = self.games_without_drops
+        games_unknown = self.games_with_unknown_drops
 
         if games_with:
             lines.append("🎮 GAMES THAT DROPPED CARDS")
@@ -174,6 +187,17 @@ class IdleTracker:
                 lines.append(f"  {name:<35} {game.idle_minutes:>12.1f}")
             lines.append("")
 
+        if games_unknown:
+            lines.append("🎮 GAMES WITH UNKNOWN DROP STATUS")
+            lines.append("-" * 40)
+            lines.append(f"  {'Game':<35} {'Time':>12}")
+            lines.append(f"  {'':<35} {'(minutes)':>12}")
+            lines.append(f"  {'-' * 33}  {'------------':>12}")
+            for game in games_unknown:
+                name = game.name if game.name else f"App {game.app_id}"
+                lines.append(f"  {name:<35} {game.idle_minutes:>12.1f}")
+            lines.append("")
+
         # Per-game detailed breakdown
         lines.append("📝 DETAILED BREAKDOWN (ALL GAMES)")
         lines.append("-" * 40)
@@ -182,7 +206,7 @@ class IdleTracker:
             cards_before = game.cards_before if game.cards_before is not None else "?"
             cards_after = game.cards_after if game.cards_after is not None else "?"
             dropped = game.cards_dropped
-            status = f"✅ +{dropped} drop(s)" if dropped > 0 else "❌ 0 drops"
+            status = "❓ unknown" if not game.drop_status_known else f"✅ +{dropped} drop(s)" if dropped > 0 else "❌ 0 drops"
             lines.append(f"  [{game.app_id}] {name}")
             lines.append(f"    Cards: {cards_before} → {cards_after} ({status})")
             lines.append(f"    Time:  {game.idle_minutes:.1f} minutes")
