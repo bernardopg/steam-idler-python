@@ -30,7 +30,15 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=1.19.1",
     "pytest>=8.3",
     "pytest-cov>=5.0",
     "ruff>=0.6",
+    "types-requests>=2.32.4.20260107",
 ]
+
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

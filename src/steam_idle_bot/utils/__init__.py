@@ -10,9 +10,11 @@ from .exceptions import (
     SteamIdleBotError,
     TradingCardDetectionError,
 )
+from .idle_tracker import IdleTracker
 from .logger import SteamIdleLogger, setup_logging
 
 __all__ = [
+    "IdleTracker",
     "SteamIdleBotError",
     "ConfigurationError",
     "SteamAuthenticationError",

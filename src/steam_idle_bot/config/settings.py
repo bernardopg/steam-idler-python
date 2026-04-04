@@ -1,10 +1,81 @@
 """Configuration management using Pydantic v2 for type safety and validation."""
 
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, ValidationError, field_validator
+from pydantic_settings import (
+    BaseSettings,
+    DotEnvSettingsSource,
+    EnvSettingsSource,
+    SettingsConfigDict,
+)
+
+
+LIST_FIELDS = {"game_app_ids", "exclude_app_ids"}
+
+
+def _parse_int_list(value: Any) -> Any:
+    """Parse comma-separated or JSON list values from environment strings."""
+    if not isinstance(value, str):
+        return value
+
+    raw_value = value.strip()
+    if raw_value == "":
+        return []
+
+    if raw_value.startswith("["):
+        try:
+            return json.loads(raw_value)
+        except json.JSONDecodeError:
+            return value
+
+    parts = [part.strip() for part in raw_value.split(",") if part.strip()]
+    if not parts:
+        return []
+
+    try:
+        return [int(part) for part in parts]
+    except ValueError:
+        return value
+
+
+def _prepare_special_field_value(field_name: str, value: Any) -> tuple[bool, Any]:
+    """Normalize selected fields read from env before model validation."""
+    if field_name in LIST_FIELDS:
+        return True, _parse_int_list(value)
+
+    if field_name == "max_checks" and isinstance(value, str) and not value.strip():
+        return True, None
+
+    return False, value
+
+
+class FlexibleEnvSettingsSource(EnvSettingsSource):
+    """Environment source with tolerant parsing for list/int fields."""
+
+    def prepare_field_value(
+        self, field_name: str, field: Any, value: Any, value_is_complex: bool
+    ) -> Any:
+        handled, parsed_value = _prepare_special_field_value(field_name, value)
+        if handled:
+            return parsed_value
+
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
+
+
+class FlexibleDotEnvSettingsSource(DotEnvSettingsSource):
+    """Dotenv source with tolerant parsing for list/int fields."""
+
+    def prepare_field_value(
+        self, field_name: str, field: Any, value: Any, value_is_complex: bool
+    ) -> Any:
+        handled, parsed_value = _prepare_special_field_value(field_name, value)
+        if handled:
+            return parsed_value
+
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
 class Settings(BaseSettings):
@@ -130,9 +201,43 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        env_ignore_empty=True,
         validate_default=True,
         populate_by_name=True,
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        """Customize source parsing to support common .env list/int formats."""
+        source_kwargs = {
+            "case_sensitive": settings_cls.model_config.get("case_sensitive"),
+            "env_prefix": settings_cls.model_config.get("env_prefix"),
+            "env_nested_delimiter": settings_cls.model_config.get(
+                "env_nested_delimiter"
+            ),
+            "env_ignore_empty": settings_cls.model_config.get("env_ignore_empty"),
+            "env_parse_none_str": settings_cls.model_config.get("env_parse_none_str"),
+            "env_parse_enums": settings_cls.model_config.get("env_parse_enums"),
+        }
+
+        return (
+            init_settings,
+            FlexibleEnvSettingsSource(settings_cls, **source_kwargs),
+            FlexibleDotEnvSettingsSource(
+                settings_cls,
+                env_file=settings_cls.model_config.get("env_file"),
+                env_file_encoding=settings_cls.model_config.get("env_file_encoding"),
+                **source_kwargs,
+            ),
+            file_secret_settings,
+        )
 
     @classmethod
     def load_from_file(cls, config_path: Optional[Path] = None) -> "Settings":
@@ -170,15 +275,17 @@ class Settings(BaseSettings):
 
                 return cls(**kwargs)
 
-        # Try to load from environment variables explicitly to avoid constructing
-        # the model without required credentials.
-        import os
-
-        env_username = os.getenv("USERNAME") or os.getenv("STEAM_USERNAME")
-        env_password = os.getenv("PASSWORD") or os.getenv("STEAM_PASSWORD")
-        if env_username and env_password:
-            return cls(username=env_username, password=env_password)
-
-        raise ValueError(
-            "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"
-        )
+        try:
+            settings_kwargs: dict[str, Any] = {}
+            return cls(**settings_kwargs)
+        except ValidationError as exc:
+            missing_fields = {
+                error.get("loc", (None,))[0]
+                for error in exc.errors()
+                if error.get("type") == "missing"
+            }
+            if "username" in missing_fields or "password" in missing_fields:
+                raise ValueError(
+                    "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"
+                ) from exc
+            raise

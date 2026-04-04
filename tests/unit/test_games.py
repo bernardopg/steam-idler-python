@@ -1,6 +1,7 @@
 """Tests for GameManager trading-card and badge filtering."""
 
 from typing import cast
+from unittest.mock import Mock
 
 from steam_idle_bot.config.settings import Settings
 from steam_idle_bot.steam.games import GameManager
@@ -69,6 +70,62 @@ def test_get_games_to_idle_filters_completed_drops():
 
     assert games == [220, 333]
     assert badge_service.calls
+
+
+def test_get_games_to_idle_does_not_scrape_after_badge_success():
+    detector = StubTradingCardDetector({220, 300, 333})
+    badge_service = StubBadgeService({220, 333})
+    settings = make_settings()
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+
+    class _FailOnScrape:
+        def has_remaining_drops(self, app_id, steam_id):
+            raise AssertionError(
+                f"unexpected scraping call for app {app_id} and steam_id {steam_id}"
+            )
+
+    manager.card_drop_checker = _FailOnScrape()
+
+    games = manager.get_games_to_idle("123")
+
+    assert games == [220, 333]
+    assert badge_service.calls
+
+
+def test_get_games_to_idle_logs_drop_filter_source_badge_service():
+    detector = StubTradingCardDetector({220, 300, 333})
+    badge_service = StubBadgeService({220, 333})
+    settings = make_settings()
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+    manager.detailed_logger.log_filtering_process = Mock()
+
+    games = manager.get_games_to_idle("123")
+
+    assert games == [220, 333]
+    assert (
+        manager.detailed_logger.log_filtering_process.call_args.kwargs[
+            "drop_filter_source"
+        ]
+        == "badge_service"
+    )
+
+
+def test_get_games_to_idle_logs_drop_filter_source_missing_steam_id():
+    detector = StubTradingCardDetector({220, 300, 333})
+    badge_service = StubBadgeService({220, 333})
+    settings = make_settings()
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+    manager.detailed_logger.log_filtering_process = Mock()
+
+    games = manager.get_games_to_idle(None)
+
+    assert games == [220, 300]
+    assert (
+        manager.detailed_logger.log_filtering_process.call_args.kwargs[
+            "drop_filter_source"
+        ]
+        == "skipped_missing_steam_id"
+    )
 
 
 def test_get_games_to_idle_skips_badge_filter_without_api_key():

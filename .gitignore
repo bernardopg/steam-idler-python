@@ -4,6 +4,8 @@ config.pya pull reque
 __pycache__/
 venv/
 .vscode/
+.venv/
+.mypy_cache/
 
 # Python build/cache
 *.pyc
@@ -12,3 +14,4 @@ venv/
 .coverage
 coverage.xml
 logs/
+*.log

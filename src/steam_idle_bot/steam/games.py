@@ -160,9 +160,13 @@ class GameManager:
 
         # Filter completed card drops
         games_with_drops = games_with_cards
-        if self.settings.filter_completed_card_drops and steam_id:
+        if not self.settings.filter_completed_card_drops:
+            drop_filter_source = "disabled"
+        elif not steam_id:
+            drop_filter_source = "skipped_missing_steam_id"
+        else:
             logger.info("Filtering completed card drops...")
-            games_with_drops = self._filter_completed_card_drops(
+            games_with_drops, drop_filter_source = self._filter_completed_card_drops(
                 games_with_cards, steam_id
             )
             logger.info(
@@ -189,16 +193,10 @@ class GameManager:
         final_games = games_with_drops[: self.settings.max_games_to_idle]
 
         # Log the complete process
-        scraping_results = {}
-        if self.settings.filter_completed_card_drops and steam_id:
-            # Get scraping results if available
-            from contextlib import suppress
-
-            with suppress(Exception):
-                scraping_results = {
-                    app_id: self.card_drop_checker.has_remaining_drops(app_id, steam_id)
-                    for app_id in games_with_cards
-                }
+        # Do not trigger extra scraping calls only for logging purposes. This avoids
+        # duplicate network traffic and noisy warnings when badge filtering already
+        # resolved drop availability.
+        scraping_results: dict[int, bool] = {}
 
         self.detailed_logger.log_filtering_process(
             steam_id or "manual",
@@ -208,6 +206,7 @@ class GameManager:
             final_games,
             excluded_games,
             scraping_results,
+            drop_filter_source=drop_filter_source,
         )
 
         if not final_games:
@@ -244,12 +243,12 @@ class GameManager:
 
     def _filter_completed_card_drops(
         self, games: list[int], steam_id: Optional[str]
-    ) -> list[int]:
+    ) -> tuple[list[int], str]:
         if not games:
-            return games
+            return games, "skipped_no_candidate_games"
 
         if not steam_id:
-            return games
+            return games, "skipped_missing_steam_id"
 
         # Prefer badge service over web scraping for authoritative data
         if self.badge_service and self.settings.steam_api_key:
@@ -267,7 +266,7 @@ class GameManager:
                     logger.info(
                         "All candidate games have already dropped their trading cards"
                     )
-                return badge_filtered
+                return badge_filtered, "badge_service"
             except SteamAPITimeoutError as err:
                 logger.warning(f"Badge progress request timed out: {err}")
             except BadgeServiceError as err:
@@ -289,7 +288,7 @@ class GameManager:
                 logger.info(
                     "All candidate games have already dropped their trading cards"
                 )
-            return scraping_filtered
+            return scraping_filtered, "web_scraping"
 
         except Exception as err:
             logger.warning(f"Web scraping failed: {err}")
@@ -298,4 +297,4 @@ class GameManager:
         logger.warning(
             "Could not check card drop status, including all games as fallback"
         )
-        return games
+        return games, "fallback_include_all"

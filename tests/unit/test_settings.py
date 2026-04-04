@@ -57,3 +57,57 @@ class TestSettings:
 
         with pytest.raises(ValueError):
             Settings(username="test_user", password="test_pass", rate_limit_delay=6.0)
+
+    def test_load_from_file_reads_dotenv_without_export(self, tmp_path, monkeypatch):
+        """Test .env loading without requiring shell-level exported variables."""
+        for key in (
+            "USERNAME",
+            "PASSWORD",
+            "STEAM_USERNAME",
+            "STEAM_PASSWORD",
+            "GAME_APP_IDS",
+            "EXCLUDE_APP_IDS",
+            "MAX_CHECKS",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        (tmp_path / ".env").write_text(
+            "\n".join(
+                [
+                    "USERNAME=test_user",
+                    "PASSWORD=test_pass",
+                    "GAME_APP_IDS=570,730",
+                    "EXCLUDE_APP_IDS=",
+                    "MAX_CHECKS=",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        settings = Settings.load_from_file()
+
+        assert settings.username == "test_user"
+        assert settings.password == "test_pass"
+        assert settings.game_app_ids == [570, 730]
+        assert settings.exclude_app_ids == []
+        assert settings.max_checks is None
+
+    def test_load_from_file_requires_credentials(self, tmp_path, monkeypatch):
+        """Test clear error when credentials are missing in config.py and .env."""
+        for key in (
+            "USERNAME",
+            "PASSWORD",
+            "STEAM_USERNAME",
+            "STEAM_PASSWORD",
+            "GAME_APP_IDS",
+            "EXCLUDE_APP_IDS",
+            "MAX_CHECKS",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        (tmp_path / ".env").write_text("GAME_APP_IDS=570,730\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(ValueError, match="Missing credentials"):
+            Settings.load_from_file()

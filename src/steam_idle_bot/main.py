@@ -3,12 +3,14 @@
 import argparse
 import sys
 import time
+from pathlib import Path
 
 from .config.settings import Settings
 from .steam.badges import BadgeService
 from .steam.client import SteamClientWrapper
 from .steam.games import GameManager
 from .steam.trading_cards import TradingCardDetector
+from .utils.idle_tracker import IdleTracker
 from .utils.logger import setup_logging
 
 
@@ -39,6 +41,8 @@ class SteamIdleBot:
         self.game_manager = GameManager(
             settings, self.trading_card_detector, badge_service
         )
+        self._idle_tracker = IdleTracker()
+        self._games_to_idle: list[int] = []
         self._running = False
 
     def run(self, dry_run: bool = False) -> None:
@@ -56,6 +60,7 @@ class SteamIdleBot:
             self.logger.error(f"Bot error: {e}")
             raise
         finally:
+            self._show_session_report()
             self._cleanup()
 
     def _run_dry_mode(self) -> None:
@@ -100,6 +105,15 @@ class SteamIdleBot:
         if not games:
             self.logger.error("No games to idle")
             return
+
+        # Store games list for report
+        self._games_to_idle = games
+
+        # Record initial card counts if badge service is available
+        self._capture_initial_cards()
+
+        # Start idling tracker
+        self._idle_tracker.start_session(games)
 
         # Start idling
         if not self.client.start_idling(games):
@@ -152,6 +166,64 @@ class SteamIdleBot:
             except Exception as e:
                 self.logger.error(f"Error in main loop: {e}")
                 self.client.sleep(30)
+
+    def _capture_initial_cards(self) -> None:
+        """Capture the current number of cards remaining for each game."""
+        try:
+            badge_service = self.game_manager.badge_service
+            if badge_service and hasattr(badge_service, "_fetch_cards_remaining"):
+                steam_id = self.client.steam_id
+                if steam_id:
+                    cards = badge_service._fetch_cards_remaining(steam_id)
+                    for app_id, count in cards.items():
+                        self._idle_tracker.set_cards_before(app_id, count)
+                    self.logger.info(f"Captured initial card counts for {len(cards)} games")
+            else:
+                # No badge service available, set from game_manager if it has data
+                if hasattr(self.game_manager, '_card_counts'):
+                    for app_id, count in self.game_manager._card_counts.items():
+                        self._idle_tracker.set_cards_before(app_id, count)
+        except Exception as e:
+            self.logger.debug(f"Could not capture initial card counts: {e}")
+
+    def _capture_final_cards(self) -> None:
+        """Capture the final number of cards remaining for each game."""
+        try:
+            badge_service = self.game_manager.badge_service
+            if badge_service and hasattr(badge_service, "_fetch_cards_remaining"):
+                steam_id = self.client.steam_id
+                if steam_id:
+                    cards = badge_service._fetch_cards_remaining(steam_id)
+                    for app_id, count in cards.items():
+                        self._idle_tracker.set_cards_after(app_id, count)
+                    self.logger.info(f"Captured final card counts for {len(cards)} games")
+            else:
+                if hasattr(self.game_manager, '_card_counts'):
+                    for app_id, count in self.game_manager._card_counts.items():
+                        self._idle_tracker.set_cards_after(app_id, count)
+        except Exception as e:
+            self.logger.debug(f"Could not capture final card counts: {e}")
+
+    def _show_session_report(self) -> None:
+        """Show the session report when bot stops."""
+        self._idle_tracker.end_session()
+
+        # Capture final card counts before showing report
+        try:
+            self._capture_final_cards()
+        except Exception:
+            pass
+
+        # Print report to console
+        report = self._idle_tracker.format_report()
+        print(report)
+
+        # Save report to file
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        report_path = logs_dir / f"idle_report_{timestamp}.txt"
+        self._idle_tracker.save_report(str(report_path))
 
     def _cleanup(self) -> None:
         """Clean up resources."""

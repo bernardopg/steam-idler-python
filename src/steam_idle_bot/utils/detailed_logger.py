@@ -35,6 +35,7 @@ class DetailedLogger:
         final_games: list[int],
         excluded_games: list[int],
         scraping_results: dict[int, bool],
+        drop_filter_source: str = "unknown",
     ) -> None:
         """
         Log the complete filtering process.
@@ -56,6 +57,7 @@ class DetailedLogger:
             "games_with_drops": len(games_with_drops),
             "final_games": len(final_games),
             "excluded_games": len(excluded_games),
+            "drop_filter_source": drop_filter_source,
             "details": {
                 "all_games": all_games,
                 "games_with_cards": games_with_cards,
@@ -63,6 +65,7 @@ class DetailedLogger:
                 "final_games": final_games,
                 "excluded_games": excluded_games,
                 "scraping_results": scraping_results,
+                "drop_filter_source": drop_filter_source,
             },
         }
 
@@ -105,7 +108,7 @@ class DetailedLogger:
         self,
         api_name: str,
         games: list[int],
-        results: dict[str, Any],
+        results: dict[int | str, Any],
     ) -> None:
         """Log API results for debugging."""
         log_data = {
