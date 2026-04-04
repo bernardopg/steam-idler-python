@@ -48,17 +48,23 @@ class CardDropChecker:
             identifier = remainder.strip("/")
             if not identifier:
                 raise ValueError("Steam ID segment cannot be empty")
-            return f"https://steamcommunity.com/{prefix}/{identifier}/gamecards/{app_id}/"
+            return (
+                f"https://steamcommunity.com/{prefix}/{identifier}/gamecards/{app_id}/"
+            )
 
         # Detect 64-bit numeric Steam IDs (17 digits) and use the profiles path
         steam64_match = re.search(r"\d{17}", cleaned_id)
         if cleaned_id.isdigit() and len(cleaned_id) >= 17:
             identifier = cleaned_id
-            return f"https://steamcommunity.com/profiles/{identifier}/gamecards/{app_id}/"
+            return (
+                f"https://steamcommunity.com/profiles/{identifier}/gamecards/{app_id}/"
+            )
 
         if steam64_match:
             identifier = steam64_match.group(0)
-            return f"https://steamcommunity.com/profiles/{identifier}/gamecards/{app_id}/"
+            return (
+                f"https://steamcommunity.com/profiles/{identifier}/gamecards/{app_id}/"
+            )
 
         # Fallback to vanity URL path
         return f"https://steamcommunity.com/id/{cleaned_id}/gamecards/{app_id}/"
@@ -114,7 +120,9 @@ class CardDropChecker:
             # Check for English patterns as fallback
             elif "no card drops remaining" in content_lower:
                 result = False
-                logger.debug(f"Game {app_id} - NO DROPS (found 'no card drops remaining')")
+                logger.debug(
+                    f"Game {app_id} - NO DROPS (found 'no card drops remaining')"
+                )
             elif "can drop more" in content_lower or "drops remaining" in content_lower:
                 result = True
                 logger.debug(f"Game {app_id} - HAS DROPS (found English pattern)")
@@ -148,7 +156,9 @@ class CardDropChecker:
                                 )
                             else:
                                 result = False
-                                logger.debug(f"Game {app_id} - NO DROPS (single number: {numbers})")
+                                logger.debug(
+                                    f"Game {app_id} - NO DROPS (single number: {numbers})"
+                                )
                         else:
                             logger.warning(
                                 f"Game {app_id} - Unknown span text: '{span_text}', "
@@ -158,7 +168,10 @@ class CardDropChecker:
                 else:
                     # Try to find other patterns in the HTML
                     # Look for card drop progress indicators
-                    if "card drops" in content_lower or "trading cards" in content_lower:
+                    if (
+                        "card drops" in content_lower
+                        or "trading cards" in content_lower
+                    ):
                         # If we can find card-related content but no clear status, assume has drops
                         logger.debug(
                             "Game %s - Found card-related content but unclear status, "
@@ -205,18 +218,24 @@ class CardDropChecker:
                         continue
 
             # Log the scraping result with more details
-            self.detailed_logger.log_scraping_result(app_id, steam_id, result, content[:500])
+            self.detailed_logger.log_scraping_result(
+                app_id, steam_id, result, content[:500]
+            )
 
             return result
 
         except requests.exceptions.Timeout as err:
-            raise SteamAPITimeoutError(f"Timeout checking card drops for {app_id}") from err
+            raise SteamAPITimeoutError(
+                f"Timeout checking card drops for {app_id}"
+            ) from err
         except requests.exceptions.RequestException as err:
             raise CardDropCheckError(
                 f"Network error checking card drops for {app_id}: {err}"
             ) from err
         except Exception as err:
-            raise CardDropCheckError(f"Error checking card drops for {app_id}: {err}") from err
+            raise CardDropCheckError(
+                f"Error checking card drops for {app_id}: {err}"
+            ) from err
 
     def filter_games_with_drops(self, game_ids: list[int], steam_id: str) -> list[int]:
         """
@@ -233,7 +252,9 @@ class CardDropChecker:
         skipped = 0
         scraping_results = {}
 
-        logger.info(f"Checking card drops for {len(game_ids)} games via web scraping...")
+        logger.info(
+            f"Checking card drops for {len(game_ids)} games via web scraping..."
+        )
 
         for app_id in game_ids:
             try:
@@ -253,7 +274,7 @@ class CardDropChecker:
                 filtered.append(app_id)
 
         # Log the complete filtering process
-        self.detailed_logger.log_api_results("web_scraping", game_ids, scraping_results)
+        self.detailed_logger.log_api_results("web_scraping", game_ids, scraping_results)  # type: ignore[arg-type]
 
         if skipped:
             logger.info(

@@ -219,7 +219,9 @@ class Settings(BaseSettings):
         source_kwargs = {
             "case_sensitive": settings_cls.model_config.get("case_sensitive"),
             "env_prefix": settings_cls.model_config.get("env_prefix"),
-            "env_nested_delimiter": settings_cls.model_config.get("env_nested_delimiter"),
+            "env_nested_delimiter": settings_cls.model_config.get(
+                "env_nested_delimiter"
+            ),
             "env_ignore_empty": settings_cls.model_config.get("env_ignore_empty"),
             "env_parse_none_str": settings_cls.model_config.get("env_parse_none_str"),
             "env_parse_enums": settings_cls.model_config.get("env_parse_enums"),
@@ -240,6 +242,7 @@ class Settings(BaseSettings):
     @classmethod
     def load_from_file(cls, config_path: Optional[Path] = None) -> "Settings":
         """Load settings from configuration file."""
+        explicit_config_path = config_path is not None
         if config_path is None:
             config_path = Path("config.py")
 
@@ -272,6 +275,14 @@ class Settings(BaseSettings):
                         kwargs[new_key] = getattr(config_module, legacy_key)
 
                 return cls(**kwargs)
+            if explicit_config_path:
+                raise ValueError(
+                    "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"
+                )
+        elif explicit_config_path:
+            raise ValueError(
+                "Missing credentials: provide config.py or set USERNAME and PASSWORD in the environment"
+            )
 
         try:
             settings_kwargs: dict[str, Any] = {}
