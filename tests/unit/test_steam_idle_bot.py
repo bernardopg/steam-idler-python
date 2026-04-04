@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import cast
+from typing import Any, cast
 
 from steam_idle_bot.config.settings import Settings
 from steam_idle_bot.main import SteamIdleBot
@@ -12,8 +12,8 @@ from steam_idle_bot.steam.client import SteamClientWrapper
 from steam_idle_bot.steam.games import GameManager
 
 
-def make_settings(**overrides) -> Settings:
-    base = {
+def make_settings(**overrides: Any) -> Settings:
+    base: dict[str, Any] = {
         "username": "user",
         "password": "pass",
         "steam_api_key": "key",
@@ -95,7 +95,7 @@ def test_run_normal_mode_starts_idling_and_enters_main_loop(monkeypatch):
 
     captured_games: list[list[int]] = []
 
-    def fake_main_loop(games: list[int]) -> None:
+    def fake_main_loop(games: list[int]) -> None:  # type: ignore[override]
         captured_games.append(list(games))
 
     monkeypatch.setattr(bot, "_main_loop", fake_main_loop)
@@ -124,7 +124,7 @@ def test_main_loop_refreshes_games_when_library_changes(monkeypatch):
 
     refreshed: list[list[int]] = []
 
-    def record_refresh(games: list[int]) -> None:
+    def record_refresh(games: list[int]) -> None:  # type: ignore[override]
         refreshed.append(list(games))
         bot._running = False  # stop loop after first refresh
 

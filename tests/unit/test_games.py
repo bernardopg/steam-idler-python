@@ -103,9 +103,7 @@ def test_get_games_to_idle_logs_drop_filter_source_badge_service():
 
     assert games == [220, 333]
     assert (
-        manager.detailed_logger.log_filtering_process.call_args.kwargs[
-            "drop_filter_source"
-        ]
+        manager.detailed_logger.log_filtering_process.call_args.kwargs["drop_filter_source"]
         == "badge_service"
     )
 
@@ -121,9 +119,7 @@ def test_get_games_to_idle_logs_drop_filter_source_missing_steam_id():
 
     assert games == [220, 300]
     assert (
-        manager.detailed_logger.log_filtering_process.call_args.kwargs[
-            "drop_filter_source"
-        ]
+        manager.detailed_logger.log_filtering_process.call_args.kwargs["drop_filter_source"]
         == "skipped_missing_steam_id"
     )
 

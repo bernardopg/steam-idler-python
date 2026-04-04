@@ -2,14 +2,19 @@
 
 import pytest
 
-from steam_idle_bot.config.settings import Settings
+from steam_idle_bot.config.settings import (
+    Settings,
+    _parse_int_list,
+    _prepare_special_field_value,
+)
 
 
 class TestSettings:
     """Test cases for Settings class."""
 
-    def test_default_settings(self):
+    def test_default_settings(self, tmp_path, monkeypatch):
         """Test default settings values."""
+        monkeypatch.chdir(tmp_path)
         settings = Settings(username="test_user", password="test_pass")
 
         assert settings.filter_trading_cards is True
@@ -19,6 +24,21 @@ class TestSettings:
         assert settings.max_games_to_idle == 30
         assert settings.game_app_ids == [570, 730]
         assert settings.log_level == "INFO"
+
+    def test_parse_int_list_helper(self):
+        """Test tolerant list parsing helper."""
+        assert _parse_int_list([1, 2]) == [1, 2]
+        assert _parse_int_list(" ") == []
+        assert _parse_int_list("1, 2,3") == [1, 2, 3]
+        assert _parse_int_list("[10, 20]") == [10, 20]
+        assert _parse_int_list("[broken") == "[broken"
+        assert _parse_int_list("a,b") == "a,b"
+
+    def test_prepare_special_field_value(self):
+        """Test special field preparation for env parsing."""
+        assert _prepare_special_field_value("game_app_ids", "10,20") == (True, [10, 20])
+        assert _prepare_special_field_value("max_checks", "   ") == (True, None)
+        assert _prepare_special_field_value("username", "user") == (False, "user")
 
     def test_invalid_credentials(self):
         """Test validation of placeholder credentials."""
@@ -111,3 +131,28 @@ class TestSettings:
 
         with pytest.raises(ValueError, match="Missing credentials"):
             Settings.load_from_file()
+
+    def test_load_from_legacy_config_file(self, tmp_path, monkeypatch):
+        """Test loading from legacy config.py mapping."""
+        monkeypatch.chdir(tmp_path)
+        cfg = tmp_path / "config.py"
+        cfg.write_text(
+            "\n".join(
+                [
+                    "USERNAME='legacy_user'",
+                    "PASSWORD='legacy_pass'",
+                    "GAME_APP_IDS=[10, 20]",
+                    "FILTER_TRADING_CARDS=False",
+                    "LOG_LEVEL='WARNING'",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        settings = Settings.load_from_file(cfg)
+
+        assert settings.username == "legacy_user"
+        assert settings.password == "legacy_pass"
+        assert settings.game_app_ids == [10, 20]
+        assert settings.filter_trading_cards is False
+        assert settings.log_level == "WARNING"

@@ -71,17 +71,13 @@ class BadgeService:
                 logger.debug(f"Filtered out game {app_id} - 0 cards remaining")
 
         if skipped:
-            logger.info(
-                "Filtered out %s games with no trading-card drops remaining", skipped
-            )
+            logger.info("Filtered out %s games with no trading-card drops remaining", skipped)
 
         return filtered
 
     def _fetch_cards_remaining(self, steam_id: str) -> dict[int, int]:
         if not self.settings.steam_api_key:
-            raise BadgeServiceError(
-                "Steam API key required to check trading-card drop progress"
-            )
+            raise BadgeServiceError("Steam API key required to check trading-card drop progress")
 
         params = {
             "key": self.settings.steam_api_key,

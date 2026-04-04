@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from requests import Session
@@ -29,7 +29,7 @@ class TradingCardDetector:
         cache_enabled: bool = True,
         cache_path: str = ".cache/trading_cards.json",
         cache_ttl_days: int = 30,
-        session: Optional[Any] = None,
+        session: Any | None = None,
     ):
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay
@@ -80,22 +80,16 @@ class TradingCardDetector:
             data = response.json()
 
             if str(app_id) not in data or not data[str(app_id)]["success"]:
-                raise TradingCardDetectionError(
-                    f"Failed to get app details for {app_id}"
-                )
+                raise TradingCardDetectionError(f"Failed to get app details for {app_id}")
 
             categories = data[str(app_id)].get("data", {}).get("categories", [])
-            has_cards = any(
-                cat.get("id") == self.TRADING_CARDS_CATEGORY_ID for cat in categories
-            )
+            has_cards = any(cat.get("id") == self.TRADING_CARDS_CATEGORY_ID for cat in categories)
 
             self._remember(app_id, has_cards)
             return has_cards
 
         except (requests.exceptions.Timeout, TimeoutError) as err:
-            raise SteamAPITimeoutError(
-                f"Timeout checking trading cards for app {app_id}"
-            ) from err
+            raise SteamAPITimeoutError(f"Timeout checking trading cards for app {app_id}") from err
         except requests.exceptions.RequestException as err:
             raise TradingCardDetectionError(
                 f"Network error checking trading cards for app {app_id}: {err}"
@@ -110,7 +104,7 @@ class TradingCardDetector:
         game_ids: list[int],
         max_games: int = 30,
         *,
-        max_checks: Optional[int] = None,
+        max_checks: int | None = None,
         skip_failures: bool = False,
     ) -> list[int]:
         """
@@ -145,14 +139,10 @@ class TradingCardDetector:
                 # Store API often returns unsuccessful for DLC/retired apps.
                 # Treat as no-cards and keep noise low.
                 if not skip_failures:
-                    logger.debug(
-                        f"Trading card detection failed for app {game_id}: {e}"
-                    )
+                    logger.debug(f"Trading card detection failed for app {game_id}: {e}")
                 continue
             except SteamAPITimeoutError as e:
-                logger.warning(
-                    f"Timeout checking trading cards for game {game_id}: {e}"
-                )
+                logger.warning(f"Timeout checking trading cards for game {game_id}: {e}")
                 continue
             except Exception as e:
                 if not skip_failures:

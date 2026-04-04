@@ -219,9 +219,7 @@ class Settings(BaseSettings):
         source_kwargs = {
             "case_sensitive": settings_cls.model_config.get("case_sensitive"),
             "env_prefix": settings_cls.model_config.get("env_prefix"),
-            "env_nested_delimiter": settings_cls.model_config.get(
-                "env_nested_delimiter"
-            ),
+            "env_nested_delimiter": settings_cls.model_config.get("env_nested_delimiter"),
             "env_ignore_empty": settings_cls.model_config.get("env_ignore_empty"),
             "env_parse_none_str": settings_cls.model_config.get("env_parse_none_str"),
             "env_parse_enums": settings_cls.model_config.get("env_parse_enums"),

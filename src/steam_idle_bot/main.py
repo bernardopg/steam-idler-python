@@ -1,6 +1,7 @@
 """Main entry point for Steam Idle Bot."""
 
 import argparse
+import contextlib
 import sys
 import time
 from pathlib import Path
@@ -19,9 +20,7 @@ class SteamIdleBot:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.logger = setup_logging(
-            level=settings.log_level, log_file=settings.log_file
-        )
+        self.logger = setup_logging(level=settings.log_level, log_file=settings.log_file)
         self.client = SteamClientWrapper(settings)
         # Build retrying HTTP sessions for resilient HTTP calls
         store_session = TradingCardDetector.build_session()
@@ -38,9 +37,7 @@ class SteamIdleBot:
             badge_session = TradingCardDetector.build_session()
             badge_service = BadgeService(settings, session=badge_session)
 
-        self.game_manager = GameManager(
-            settings, self.trading_card_detector, badge_service
-        )
+        self.game_manager = GameManager(settings, self.trading_card_detector, badge_service)
         self._idle_tracker = IdleTracker()
         self._games_to_idle: list[int] = []
         self._running = False
@@ -71,9 +68,7 @@ class SteamIdleBot:
         games = self.settings.game_app_ids[: self.settings.max_games_to_idle]
 
         self.logger.info("Configuration:")
-        self.logger.info(
-            f"  - Filter Trading Cards: {self.settings.filter_trading_cards}"
-        )
+        self.logger.info(f"  - Filter Trading Cards: {self.settings.filter_trading_cards}")
         self.logger.info(
             f"  - Skip Completed Card Drops: {self.settings.filter_completed_card_drops}"
         )
@@ -140,14 +135,10 @@ class SteamIdleBot:
                     self.logger.info("Refreshing game status...")
 
                     # Get fresh games list
-                    new_games = self.game_manager.get_games_to_idle(
-                        self.client.steam_id
-                    )
+                    new_games = self.game_manager.get_games_to_idle(self.client.steam_id)
 
                     if new_games != games:
-                        self.logger.info(
-                            f"Updating games from {len(games)} to {len(new_games)}"
-                        )
+                        self.logger.info(f"Updating games from {len(games)} to {len(new_games)}")
                         games = new_games
                         self.client.refresh_games(games)
 
@@ -155,9 +146,7 @@ class SteamIdleBot:
 
                 # Check connection
                 if not self.client.is_connected():
-                    self.logger.warning(
-                        "Lost connection to Steam, attempting to reconnect..."
-                    )
+                    self.logger.warning("Lost connection to Steam, attempting to reconnect...")
                     # Could add reconnection logic here
 
             except KeyboardInterrupt:
@@ -180,7 +169,7 @@ class SteamIdleBot:
                     self.logger.info(f"Captured initial card counts for {len(cards)} games")
             else:
                 # No badge service available, set from game_manager if it has data
-                if hasattr(self.game_manager, '_card_counts'):
+                if hasattr(self.game_manager, "_card_counts"):
                     for app_id, count in self.game_manager._card_counts.items():
                         self._idle_tracker.set_cards_before(app_id, count)
         except Exception as e:
@@ -198,7 +187,7 @@ class SteamIdleBot:
                         self._idle_tracker.set_cards_after(app_id, count)
                     self.logger.info(f"Captured final card counts for {len(cards)} games")
             else:
-                if hasattr(self.game_manager, '_card_counts'):
+                if hasattr(self.game_manager, "_card_counts"):
                     for app_id, count in self.game_manager._card_counts.items():
                         self._idle_tracker.set_cards_after(app_id, count)
         except Exception as e:
@@ -209,10 +198,8 @@ class SteamIdleBot:
         self._idle_tracker.end_session()
 
         # Capture final card counts before showing report
-        try:
+        with contextlib.suppress(Exception):
             self._capture_final_cards()
-        except Exception:
-            pass
 
         # Print report to console
         report = self._idle_tracker.format_report()

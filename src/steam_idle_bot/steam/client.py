@@ -86,9 +86,7 @@ class SteamClientWrapper:
                     username=self.settings.username, password=self.settings.password
                 )
             elif hasattr(self._client, "login"):
-                self._client.login(
-                    username=self.settings.username, password=self.settings.password
-                )
+                self._client.login(username=self.settings.username, password=self.settings.password)
             else:
                 raise SteamAuthenticationError("No compatible login method found")
 

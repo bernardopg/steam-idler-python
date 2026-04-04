@@ -50,9 +50,7 @@ class SteamIdleLogger:
         return self.logger
 
 
-def setup_logging(
-    level: str = "INFO", log_file: Optional[str] = None
-) -> logging.Logger:
+def setup_logging(level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
     """Set up global logging configuration."""
     logger = SteamIdleLogger(level=level, log_file=log_file).get_logger()
 

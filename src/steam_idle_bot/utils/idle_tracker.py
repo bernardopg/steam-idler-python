@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +16,10 @@ class GameIdleInfo:
 
     app_id: int
     name: str = ""
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
-    cards_before: Optional[int] = None
-    cards_after: Optional[int] = None
+    start_time: float | None = None
+    end_time: float | None = None
+    cards_before: int | None = None
+    cards_after: int | None = None
 
     @property
     def cards_dropped(self) -> int:
@@ -46,13 +45,15 @@ class IdleTracker:
     """Tracks overall idling session statistics."""
 
     def __init__(self) -> None:
-        self.session_start: Optional[float] = None
-        self.session_end: Optional[float] = None
+        self.session_start: float | None = None
+        self.session_end: float | None = None
         self.games: dict[int, GameIdleInfo] = {}
         self.game_names: dict[int, str] = {}
         self.logger = logging.getLogger(__name__)
 
-    def start_session(self, game_ids: list[int], game_names: Optional[dict[int, str]] = None) -> None:
+    def start_session(
+        self, game_ids: list[int], game_names: dict[int, str] | None = None
+    ) -> None:
         """Record the start of an idling session."""
         import time
 
@@ -74,7 +75,9 @@ class IdleTracker:
         self.session_end = time.time()
         for game in self.games.values():
             game.end_time = self.session_end
-        self.logger.info(f"Idle tracker stopped, session duration: {self.session_minutes:.1f} minutes")
+        self.logger.info(
+            f"Idle tracker stopped, session duration: {self.session_minutes:.1f} minutes"
+        )
 
     def set_cards_before(self, app_id: int, count: int) -> None:
         """Record the number of cards remaining before idling."""
@@ -125,11 +128,21 @@ class IdleTracker:
         # Session summary
         lines.append("📋 SESSION SUMMARY")
         lines.append("-" * 40)
-        start_str = datetime.fromtimestamp(self.session_start).strftime("%H:%M:%S") if self.session_start else "N/A"
-        end_str = datetime.fromtimestamp(self.session_end).strftime("%H:%M:%S") if self.session_end else "N/A"
+        start_str = (
+            datetime.fromtimestamp(self.session_start).strftime("%H:%M:%S")
+            if self.session_start
+            else "N/A"
+        )
+        end_str = (
+            datetime.fromtimestamp(self.session_end).strftime("%H:%M:%S")
+            if self.session_end
+            else "N/A"
+        )
         lines.append(f"  Start time:     {start_str}")
         lines.append(f"  End time:       {end_str}")
-        lines.append(f"  Duration:       {self.session_minutes:.1f} minutes ({self.session_seconds:.0f} seconds)")
+        lines.append(
+            f"  Duration:       {self.session_minutes:.1f} minutes ({self.session_seconds:.0f} seconds)"  # noqa: E501
+        )
         lines.append(f"  Games idled:    {len(self.games)}")
         lines.append(f"  Total dropped:  {self.total_cards_dropped} card(s)")
         lines.append("")
@@ -146,9 +159,7 @@ class IdleTracker:
             lines.append(f"  {'-' * 33}  {'------':>6} {'------------':>12}")
             for game in games_with:
                 name = game.name if game.name else f"App {game.app_id}"
-                lines.append(
-                    f"  {name:<35} {game.cards_dropped:>6} {game.idle_minutes:>12.1f}"
-                )
+                lines.append(f"  {name:<35} {game.cards_dropped:>6} {game.idle_minutes:>12.1f}")
             lines.append("")
 
         # Games without drops
