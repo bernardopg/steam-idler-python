@@ -18,7 +18,7 @@ dependencies = [
     "pydantic-settings==2.13.1",
     "pycryptodomex==3.23.0",
     "requests==2.33.1",
-    "rich==14.3.3",
+    "rich==15.0.0",
     "six==1.17.0",
     "steam>=1.4.0,<1.5.0",
     "steamclient==1.2",
