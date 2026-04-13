@@ -20,7 +20,7 @@ dependencies = [
     "requests==2.33.1",
     "rich==14.3.3",
     "six==1.17.0",
-    "steam>=1.4.0,<1.5.0",
+    "steam>=1.4.4,<1.5.0",
     "steamclient==1.2",
     "urllib3==2.6.3",
     "vdf==3.4",
