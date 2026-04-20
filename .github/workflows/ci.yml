@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up UV
-        uses: astral-sh/setup-uv@v8.0.0
+        uses: astral-sh/setup-uv@v8.1.0
 
       - name: Set up Python
         uses: actions/setup-python@v6
