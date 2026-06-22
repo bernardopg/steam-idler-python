@@ -49,31 +49,108 @@ class BadgeService:
     def clear_cache(self) -> None:  # pragma: no cover - no caching yet
         """Clear cached badge data (placeholder for future use)."""
 
-    def filter_games_with_remaining_cards(self, game_ids: Iterable[int], steam_id: str) -> list[int]:
-        """Return IDs that still have trading cards available to drop."""
+    def get_trading_card_badge_game_ids(self, steam_id: str) -> set[int]:
+        """Return app IDs that appear in the user's trading-card badge catalog."""
+        badges = self._fetch_badges(steam_id)
+        app_ids: set[int] = set()
+
+        for badge in badges:
+            app_id = badge.get("appid")
+            if not app_id:
+                continue
+
+            try:
+                app_id_int = int(app_id)
+            except (TypeError, ValueError):
+                continue
+
+            if badge.get("border_color", 0) != 0:
+                continue
+
+            app_ids.add(app_id_int)
+
+        return app_ids
+
+    def partition_games_by_remaining_cards(
+        self,
+        game_ids: Iterable[int],
+        steam_id: str,
+    ) -> tuple[list[int], list[int]]:
+        """Return (confirmed_remaining, unknown_status) for the supplied games.
+
+        The Steam badge API only contains apps for which badge/card-drop progress is
+        available. When a candidate game is missing from the API response we should not
+        automatically assume it still has drops remaining; instead, callers can decide
+        whether to confirm those games through a secondary mechanism such as scraping.
+        """
         cards_remaining = self._fetch_cards_remaining(steam_id)
-        filtered: list[int] = []
+        confirmed_remaining: list[int] = []
+        unknown_status: list[int] = []
         skipped = 0
 
         for app_id in game_ids:
             remaining = cards_remaining.get(app_id)
             if remaining is None:
-                # Game not in badges list - probably still has drops
-                filtered.append(app_id)
+                unknown_status.append(app_id)
+                logger.debug("Badge API returned no card-drop data for game %s", app_id)
             elif remaining > 0:
-                # Game has remaining drops
-                filtered.append(app_id)
+                confirmed_remaining.append(app_id)
             else:
-                # Game has 0 remaining drops
                 skipped += 1
                 logger.debug(f"Filtered out game {app_id} - 0 cards remaining")
 
         if skipped:
             logger.info("Filtered out %s games with no trading-card drops remaining", skipped)
+        if unknown_status:
+            logger.info(
+                "Badge API returned no card-drop data for %s candidate games",
+                len(unknown_status),
+            )
 
+        return confirmed_remaining, unknown_status
+
+    def filter_games_with_remaining_cards(self, game_ids: Iterable[int], steam_id: str) -> list[int]:
+        """Return IDs with confirmed remaining trading-card drops."""
+        filtered, _unknown = self.partition_games_by_remaining_cards(game_ids, steam_id)
         return filtered
 
     def _fetch_cards_remaining(self, steam_id: str) -> dict[int, int]:
+        badges = self._fetch_badges(steam_id)
+        cards_remaining: dict[int, int] = {}
+
+        for badge in badges:
+            app_id = badge.get("appid")
+            if not app_id:
+                continue
+
+            try:
+                app_id_int = int(app_id)
+            except (TypeError, ValueError):
+                continue
+
+            # Check if this is a trading card badge
+            border_color = badge.get("border_color", 0)
+            if border_color != 0:
+                # Not a trading card badge, skip
+                continue
+
+            if "cards_remaining" not in badge:
+                continue
+
+            remaining = badge.get("cards_remaining")
+            if remaining is None:
+                continue
+
+            try:
+                remaining_int = int(remaining)
+            except (TypeError, ValueError):
+                continue
+
+            cards_remaining[app_id_int] = remaining_int
+
+        return cards_remaining
+
+    def _fetch_badges(self, steam_id: str) -> list[dict[str, Any]]:
         if not self.settings.steam_api_key:
             raise BadgeServiceError("Steam API key required to check trading-card drop progress")
 
@@ -102,31 +179,7 @@ class BadgeService:
             raise BadgeServiceError("Invalid JSON response from badge API") from err
 
         badges = data.get("response", {}).get("badges", [])
-        cards_remaining: dict[int, int] = {}
+        if not isinstance(badges, list):
+            raise BadgeServiceError("Invalid badge list in badge API response")
 
-        for badge in badges:
-            app_id = badge.get("appid")
-            if not app_id:
-                continue
-
-            try:
-                app_id_int = int(app_id)
-            except (TypeError, ValueError):
-                continue
-
-            # Check if this is a trading card badge
-            border_color = badge.get("border_color", 0)
-            if border_color != 0:
-                # Not a trading card badge, skip
-                continue
-
-            remaining = badge.get("cards_remaining", 0)
-
-            try:
-                remaining_int = int(remaining)
-            except (TypeError, ValueError):
-                continue
-
-            cards_remaining[app_id_int] = remaining_int
-
-        return cards_remaining
+        return badges

@@ -43,6 +43,9 @@ class FakeSteamClient:
     def sleep(self, seconds: float):
         self.sleep_calls.append(seconds)
 
+    def get_web_session(self):
+        return {"session": "ok"}
+
 
 def test_initialize_success() -> None:
     wrapper = SteamClientWrapper(make_settings())
@@ -370,6 +373,96 @@ def test_refresh_games_and_properties() -> None:
     assert wrapper.steam_id == "123"
     assert wrapper.username == "abc"
     assert wrapper.client is wrapper._client
+
+
+def test_get_web_session_property() -> None:
+    wrapper = SteamClientWrapper(make_settings())
+    wrapper._client = FakeSteamClient()
+
+    assert wrapper.get_web_session() == {"session": "ok"}
+
+    class BrokenWebSession:
+        def get_web_session(self):
+            raise RuntimeError("boom")
+
+    wrapper._client = BrokenWebSession()
+    assert wrapper.get_web_session() is None
+
+
+def test_get_web_session_builds_from_cookies_when_direct_session_is_missing() -> None:
+    wrapper = SteamClientWrapper(make_settings())
+
+    class CookieClient:
+        def __init__(self):
+            self.calls = 0
+
+        def get_web_session(self):
+            return None
+
+        def get_web_session_cookies(self):
+            self.calls += 1
+            if self.calls < 3:
+                return None
+            return {
+                "steamLogin": "token",
+                "steamLoginSecure": "secure-token",
+            }
+
+        def sleep(self, seconds: float):
+            return None
+
+    wrapper._client = CookieClient()
+
+    session = wrapper.get_web_session()
+
+    assert session is not None
+    assert session.cookies.get("steamLogin", domain="steamcommunity.com") == "token"
+    assert session.cookies.get("steamLoginSecure", domain="steamcommunity.com") == "secure-token"
+
+
+def test_get_web_session_uses_configured_browser_cookies_first() -> None:
+    wrapper = SteamClientWrapper(make_settings())
+
+    class NoisyClient:
+        def get_web_session(self):
+            raise AssertionError("should not be called")
+
+    wrapper._client = NoisyClient()
+
+    session = wrapper.get_web_session(
+        cookies={
+            "steamLoginSecure": "secure-token",
+            "sessionid": "session-token",
+        }
+    )
+
+    assert session is not None
+    assert session.cookies.get("steamLoginSecure", domain="steamcommunity.com") == "secure-token"
+    assert session.cookies.get("sessionid", domain="steamcommunity.com") == "session-token"
+
+
+def test_build_web_session_from_browser_export_preserves_domains() -> None:
+    session = SteamClientWrapper._build_web_session_from_cookies(
+        [
+            {
+                "name": "steamLoginSecure",
+                "value": "community-token",
+                "domain": "steamcommunity.com",
+                "path": "/",
+                "secure": True,
+            },
+            {
+                "name": "steamLoginSecure",
+                "value": "store-token",
+                "domain": "store.steampowered.com",
+                "path": "/",
+                "secure": True,
+            },
+        ]
+    )
+
+    assert session.cookies.get("steamLoginSecure", domain="steamcommunity.com") == "community-token"
+    assert session.cookies.get("steamLoginSecure", domain="store.steampowered.com") == "store-token"
 
 
 def test_update_user_info_handles_exceptions() -> None:

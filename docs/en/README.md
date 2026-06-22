@@ -7,7 +7,7 @@ title: Steam Idle Bot (EN)
 
 > 🚀 Automate Steam playtime farming and trading card drops effortlessly. No more manual babysitting – just set it up and let it run! With smart features like badge awareness, Steam Guard support, and a sleek Python setup, it's the ultimate tool for Steam enthusiasts.
 
-[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/bernardopg/steam-idler-python.svg?style=social)](https://github.com/bernardopg/steam-idler-python/stargazers)
 
@@ -75,7 +75,7 @@ Get up and running fast with these simple steps. We'll use UV for a hassle-free 
 
 ## 📦 Requirements
 
-- **Python**: 3.9 or higher (UV handles this for you).
+- **Python**: 3.12 or higher (UV handles this for you).
 - **Steam Account**: With games that support trading cards.
 - **Steam Web API Key** (recommended): For library syncing and smart filtering.
 - **Optional**: A dedicated Steam account to avoid disrupting your main profile.
@@ -218,7 +218,7 @@ PRs welcome! Include tests, update docs, and describe changes.
 | Credentials not configured     | Fill `config.py` or set env vars; avoid placeholders.                    |
 | Login failed                   | Verify creds/2FA; check for account locks.                               |
 | No games to idle               | Add API key or use `--no-trading-cards`.                                 |
-| Import errors                  | Run `uv sync`; ensure Python 3.9+.                                       |
+| Import errors                  | Run `uv sync`; ensure Python 3.12+.                                       |
 | No cards dropping              | Check filters; try `--keep-completed-drops`.                             |
 
 For more, enable `LOG_LEVEL=DEBUG` and file an [issue](https://github.com/bernardopg/steam-idler-python/issues) with redacted logs.

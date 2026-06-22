@@ -69,8 +69,8 @@ def test_filter_games_with_remaining_cards_skips_completed():
 
     result = service.filter_games_with_remaining_cards([300, 220, 111], "123")
 
-    # 300 should be dropped, 220 kept, 111 kept because missing info
-    assert result == [220, 111]
+    # 300 should be dropped, 220 kept, 111 is unknown (not confirmed by badge API)
+    assert result == [220]
     assert session.calls  # ensure API was queried
 
 
@@ -80,8 +80,18 @@ def test_filter_games_with_remaining_cards_handles_missing_field():
 
     result = service.filter_games_with_remaining_cards([555], "123")
 
-    # Missing cards_remaining indicates drops are exhausted
+    # Missing cards_remaining means the badge API cannot confirm drop status
     assert result == []
+
+
+def test_partition_games_with_remaining_cards_marks_missing_field_unknown():
+    session = DummySession(data={"response": {"badges": [{"appid": 555}]}})
+    service = BadgeService(make_settings(), session=session)
+
+    confirmed, unknown = service.partition_games_by_remaining_cards([555], "123")
+
+    assert confirmed == []
+    assert unknown == [555]
 
 
 def test_fetch_cards_remaining_raises_on_timeout():

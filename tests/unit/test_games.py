@@ -30,17 +30,57 @@ class StubTradingCardDetector:
 
 
 class StubBadgeService:
-    def __init__(self, keep=None, exc=None):
+    def __init__(self, keep=None, unknown=None, exc=None, catalog_exc=None):
         self.keep = set(keep or [])
+        self.unknown = set(unknown or [])
         self.exc = exc
+        self.catalog_exc = catalog_exc
         self.calls = []
         self.cleared = False
+
+    def partition_games_by_remaining_cards(self, games, steam_id):
+        self.calls.append((tuple(games), steam_id))
+        if self.exc:
+            raise self.exc
+        return (
+            [app for app in games if app in self.keep],
+            [app for app in games if app in self.unknown],
+        )
 
     def filter_games_with_remaining_cards(self, games, steam_id):
         self.calls.append((tuple(games), steam_id))
         if self.exc:
             raise self.exc
         return [app for app in games if app in self.keep]
+
+    def get_trading_card_badge_game_ids(self, steam_id):
+        self.calls.append(("catalog", steam_id))
+        if self.catalog_exc:
+            raise self.catalog_exc
+        return self.keep | self.unknown
+
+    def clear_cache(self):
+        self.cleared = True
+
+
+class StubBadgeServiceWithoutCatalog:
+    """Mimics a badge service without the new catalog method for fallback tests."""
+
+    def __init__(self, keep=None, unknown=None, exc=None):
+        self.keep = set(keep or [])
+        self.unknown = set(unknown or [])
+        self.exc = exc
+        self.calls = []
+        self.cleared = False
+
+    def partition_games_by_remaining_cards(self, games, steam_id):
+        self.calls.append((tuple(games), steam_id))
+        if self.exc:
+            raise self.exc
+        return (
+            [app for app in games if app in self.keep],
+            [app for app in games if app in self.unknown],
+        )
 
     def clear_cache(self):
         self.cleared = True
@@ -121,6 +161,8 @@ def test_get_games_to_idle_skips_badge_filter_without_api_key():
     badge_service = StubBadgeService(exc=AssertionError("should not call"))
     settings = make_settings(steam_api_key=None)
     manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+    manager.card_drop_checker = Mock()
+    manager.card_drop_checker.filter_games_with_drops.return_value = [220, 300]
 
     games = manager.get_games_to_idle("123")
 
@@ -164,11 +206,85 @@ def test_clear_cache_propagates_to_services():
 
 def test_badge_errors_fall_back_to_trading_card_list():
     detector = StubTradingCardDetector({220, 300})
-    badge_service = StubBadgeService(exc=BadgeServiceError("nope"))
+    badge_service = StubBadgeService(keep={220, 300}, exc=BadgeServiceError("nope"))
     settings = make_settings(game_app_ids=[220, 300])
     manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+    manager.card_drop_checker = Mock()
+    manager.card_drop_checker.filter_games_with_drops.return_value = [220, 300]
+    manager.card_drop_checker.has_authenticated_session = True
 
     games = manager.get_games_to_idle("123")
 
     assert games == [220, 300]
     assert badge_service.calls
+
+
+def test_get_games_to_idle_scrapes_games_with_unknown_badge_status():
+    detector = StubTradingCardDetector({220, 300, 333})
+    badge_service = StubBadgeService(keep={220}, unknown={333})
+    settings = make_settings(game_app_ids=[220, 300, 333], max_games_to_idle=3)
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+
+    manager.card_drop_checker = Mock()
+    manager.card_drop_checker.filter_games_with_drops.return_value = [333]
+
+    games = manager.get_games_to_idle("123")
+
+    assert games == [220, 333]
+    manager.card_drop_checker.filter_games_with_drops.assert_called_once_with([333], "123")
+
+
+def test_get_games_to_idle_confirms_badge_catalog_misses_via_store_detector():
+    detector = StubTradingCardDetector({410110, 806140})
+    badge_service = StubBadgeService(keep={48000})
+    settings = make_settings(
+        game_app_ids=[48000, 410110, 806140],
+        max_games_to_idle=3,
+        filter_completed_card_drops=False,
+    )
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+
+    games = manager.get_games_to_idle("123")
+
+    assert games == [48000, 410110, 806140]
+    assert detector.calls[0][0] == (410110, 806140)
+
+
+def test_get_games_to_idle_excludes_unknown_badge_games_without_auth_scraping():
+    detector = StubTradingCardDetector({220, 300, 333})
+    badge_service = StubBadgeService(keep={220}, unknown={333})
+    settings = make_settings(game_app_ids=[220, 300, 333], max_games_to_idle=3)
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+
+    manager.card_drop_checker = Mock()
+    manager.card_drop_checker.has_authenticated_session = False
+
+    games = manager.get_games_to_idle("123")
+
+    assert games == [220]
+    manager.card_drop_checker.filter_games_with_drops.assert_not_called()
+
+
+def test_get_games_to_idle_scans_all_games_when_drop_filter_enabled():
+    game_ids = list(range(1, 101))
+    detector = StubTradingCardDetector(set(game_ids))
+    badge_service = StubBadgeServiceWithoutCatalog({1, 2})
+    settings = make_settings(game_app_ids=game_ids, max_games_to_idle=2)
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+
+    manager.get_games_to_idle("123")
+
+    assert detector.calls[0][1] == len(settings.game_app_ids)
+
+
+def test_get_games_to_idle_prefers_badge_catalog_for_trading_card_discovery():
+    detector = StubTradingCardDetector({220, 333})
+    badge_service = StubBadgeService(keep={220, 333})
+    settings = make_settings(game_app_ids=[220, 333], max_games_to_idle=3)
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+    manager.card_drop_checker = Mock()
+
+    games = manager.get_games_to_idle("123")
+
+    assert games == [220, 333]
+    assert detector.calls == []

@@ -2,6 +2,7 @@
 
 import logging
 import re
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -21,11 +22,29 @@ class CardDropCheckError(Exception):
 class CardDropChecker:
     """Checks Steam card drops using web scraping."""
 
-    def __init__(self, settings: Settings, timeout: int = 10) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        timeout: int = 10,
+        session: Any | None = None,
+        *,
+        authenticated_session: bool = False,
+    ) -> None:
         self.settings = settings
         self.timeout = timeout
-        self._http = self._build_session()
+        self._http = session or self._build_session()
+        self._authenticated_session = authenticated_session
         self.detailed_logger = DetailedLogger(settings)
+
+    @property
+    def has_authenticated_session(self) -> bool:
+        """Whether the checker is using an authenticated web session."""
+        return self._authenticated_session
+
+    def set_session(self, session: Any, *, authenticated_session: bool = False) -> None:
+        """Swap the underlying HTTP session, optionally marking it as authenticated."""
+        self._http = session
+        self._authenticated_session = authenticated_session
 
     @staticmethod
     def _build_gamecards_url(steam_id: str, app_id: int) -> str:
@@ -97,98 +116,20 @@ class CardDropChecker:
             response.raise_for_status()
 
             content = response.text
-
-            # Look for the exact text patterns in the content
-            content_lower = content.lower()
-
-            # Check for "não dará mais cartas" (no drops) - Portuguese
-            if "não dará mais cartas" in content_lower:
-                result = False
-                logger.debug(f"Game {app_id} - NO DROPS (found 'não dará mais cartas')")
-            # Check for "pode dar mais" (has drops) - Portuguese
-            elif "pode dar mais" in content_lower:
-                result = True
-                logger.debug(f"Game {app_id} - HAS DROPS (found 'pode dar mais')")
-            # Check for English patterns as fallback
-            elif "no card drops remaining" in content_lower:
-                result = False
-                logger.debug(f"Game {app_id} - NO DROPS (found 'no card drops remaining')")
-            elif "can drop more" in content_lower or "drops remaining" in content_lower:
-                result = True
-                logger.debug(f"Game {app_id} - HAS DROPS (found English pattern)")
-            else:
-                # Try to find the specific span with progress_info_bold
-                progress_span_match = re.search(
-                    r'<span class="progress_info_bold">([^<]+)</span>',
-                    content,
-                    re.IGNORECASE,
-                )
-
-                if progress_span_match:
-                    span_text = progress_span_match.group(1).strip().lower()
-                    logger.debug(f"Game {app_id} - Found progress span: '{span_text}'")
-
-                    if "não dará mais" in span_text or "no card drops" in span_text:
-                        result = False
-                        logger.debug(f"Game {app_id} - NO DROPS (span: {span_text})")
-                    elif "pode dar mais" in span_text or "drops remaining" in span_text:
-                        result = True
-                        logger.debug(f"Game {app_id} - HAS DROPS (span: {span_text})")
-                    else:
-                        # Try to extract numbers from the span to determine if drops remain
-                        numbers = re.findall(r"\d+", span_text)
-                        if numbers:
-                            # If we find numbers like "3/5" or "2 remaining", assume has drops
-                            if len(numbers) >= 2 or "remaining" in span_text:
-                                result = True
-                                logger.debug(f"Game {app_id} - HAS DROPS (numbers found: {numbers})")
-                            else:
-                                result = False
-                                logger.debug(f"Game {app_id} - NO DROPS (single number: {numbers})")
-                        else:
-                            logger.warning(f"Game {app_id} - Unknown span text: '{span_text}', assuming has drops")
-                            result = True  # Fallback
+            result = self._extract_drop_status(content, app_id)
+            if result is None:
+                if self._authenticated_session:
+                    logger.info(
+                        "Game %s - badge page status is ambiguous; including game because the session is authenticated",
+                        app_id,
+                    )
+                    result = True
                 else:
-                    # Try to find other patterns in the HTML
-                    # Look for card drop progress indicators
-                    if "card drops" in content_lower or "trading cards" in content_lower:
-                        # If we can find card-related content but no clear status, assume has drops
-                        logger.debug(
-                            "Game %s - Found card-related content but unclear status, assuming has drops",
-                            app_id,
-                        )
-                        result = True
-                    else:
-                        logger.warning(
-                            "Could not determine drop status for %s, assuming has drops",
-                            app_id,
-                        )
-                        result = True  # Fallback
-
-            # Additional check: look for specific Steam card drop patterns
-            # Steam often shows "X card drops remaining" or similar
-            card_drop_patterns = [
-                r"(\d+)\s*card drops? remaining",
-                r"(\d+)\s*drops? remaining",
-                r"remaining\s*:\s*(\d+)",
-                r"progress_info_bold[^>]*>([^<]*(\d+)[^<]*)</span>",
-            ]
-
-            for pattern in card_drop_patterns:
-                match = re.search(pattern, content, re.IGNORECASE)
-                if match:
-                    try:
-                        drops_remaining = int(match.group(1))
-                        if drops_remaining > 0:
-                            result = True
-                            logger.debug(f"Game {app_id} - HAS DROPS (found {drops_remaining} drops remaining)")
-                            break
-                        else:
-                            result = False
-                            logger.debug(f"Game {app_id} - NO DROPS (found {drops_remaining} drops remaining)")
-                            break
-                    except (ValueError, IndexError):
-                        continue
+                    logger.info(
+                        "Game %s - badge page status is ambiguous without authenticated session; excluding game",
+                        app_id,
+                    )
+                    result = False
 
             # Log the scraping result with more details
             self.detailed_logger.log_scraping_result(app_id, steam_id, result, content[:500])
@@ -246,3 +187,122 @@ class CardDropChecker:
             )
 
         return filtered
+
+    def _extract_drop_status(self, content: str, app_id: int) -> bool | None:
+        """Extract a drop-status signal from the badge HTML.
+
+        Returns:
+            True when the page explicitly indicates drops remain.
+            False when the page explicitly indicates there are no drops remaining.
+            None when the page is valid but ambiguous.
+        """
+        content_lower = content.lower()
+        looks_like_badge_page = any(
+            marker in content_lower
+            for marker in (
+                "badge_gamecard_page",
+                "badge_title_stats_drops",
+                "badge_card_set_cards",
+                "steam badges ::",
+            )
+        )
+
+        explicit_no_drop_markers = (
+            "não dará mais cartas",
+            "no card drops remaining",
+        )
+        explicit_has_drop_markers = (
+            "pode dar mais",
+            "can drop more",
+        )
+
+        for marker in explicit_no_drop_markers:
+            if marker in content_lower:
+                logger.debug("Game %s - NO DROPS (found marker %r)", app_id, marker)
+                return False
+
+        for marker in explicit_has_drop_markers:
+            if marker in content_lower:
+                logger.debug("Game %s - HAS DROPS (found marker %r)", app_id, marker)
+                return True
+
+        card_drop_patterns = [
+            r"(\d+)\s*card drops? remaining",
+            r"(\d+)\s*drops? remaining",
+            r"remaining\s*:\s*(\d+)",
+        ]
+        for pattern in card_drop_patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if not match:
+                continue
+            try:
+                drops_remaining = int(match.group(1))
+            except (ValueError, IndexError):
+                continue
+
+            logger.debug(
+                "Game %s - %s DROPS (found %s drops remaining)",
+                app_id,
+                "HAS" if drops_remaining > 0 else "NO",
+                drops_remaining,
+            )
+            return drops_remaining > 0
+
+        progress_span_match = re.search(
+            r'<span class="progress_info_bold">([^<]+)</span>',
+            content,
+            re.IGNORECASE,
+        )
+        if progress_span_match:
+            span_text = progress_span_match.group(1).strip().lower()
+            logger.debug("Game %s - Found progress span: %r", app_id, span_text)
+
+            if "não dará mais" in span_text or "no card drops" in span_text:
+                return False
+            if "pode dar mais" in span_text or "drops remaining" in span_text:
+                return True
+
+            numbers = re.findall(r"\d+", span_text)
+            if len(numbers) >= 2 or "remaining" in span_text:
+                logger.debug("Game %s - HAS DROPS (progress span numbers: %s)", app_id, numbers)
+                return True
+
+            logger.warning(
+                "Game %s - Unclear progress span %r, treating as unknown",
+                app_id,
+                span_text,
+            )
+            return None
+
+        drops_div_match = re.search(
+            r'<div class="badge_title_stats_drops">(.*?)</div>',
+            content,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if drops_div_match:
+            drops_text = re.sub(r"<[^>]+>", " ", drops_div_match.group(1))
+            drops_text = re.sub(r"\s+", " ", drops_text).strip().lower()
+            if not drops_text:
+                logger.info("Game %s - badge page exposed no drop-status text", app_id)
+                return None if looks_like_badge_page else False
+            if any(marker in drops_text for marker in explicit_no_drop_markers):
+                return False
+            if any(marker in drops_text for marker in explicit_has_drop_markers):
+                return True
+
+        if ("sign in" in content_lower or "login" in content_lower) and not looks_like_badge_page:
+            logger.info(
+                "Game %s - badge page appears unauthenticated and exposed no drop status; assuming no drops",
+                app_id,
+            )
+            return False
+
+        if ("card drops" in content_lower or "trading cards" in content_lower) and looks_like_badge_page:
+            logger.info(
+                "Game %s - found generic card-related content without explicit drop status",
+                app_id,
+            )
+            return None
+
+        logger.warning("Could not determine drop status for %s", app_id)
+        return None if looks_like_badge_page else False

@@ -7,7 +7,7 @@
 >
 > 🚀 Automatize o farm de tempo de jogo e drops de cartas Steam sem esforço. Sem mais supervisão manual – apenas configure e deixe rodar! Com recursos inteligentes como detecção de emblemas, suporte Steam Guard e uma configuração Python moderna.
 
-[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/bernardopg/steam-idler-python.svg?style=social)](https://github.com/bernardopg/steam-idler-python/stargazers)
 
@@ -43,7 +43,7 @@ Comece em menos de 5 minutos! Veja o [README completo](docs/pt-br/README.md) par
 
 ## 📦 Requirements / Requisitos
 
-- **Python**: 3.9 or higher / 3.9 ou superior
+- **Python**: 3.12 or higher / 3.12 ou superior
 - **Steam Account**: With games that support trading cards / Com jogos que suportam cartas Steam
 - **Steam Web API Key**: Recommended for best features / Recomendado para melhores recursos
 

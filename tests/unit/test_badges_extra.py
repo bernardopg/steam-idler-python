@@ -107,6 +107,28 @@ def test_fetch_cards_remaining_parsing_rules():
     assert cards == {300: 0, 400: 3}
 
 
+def test_get_trading_card_badge_game_ids_parsing_rules():
+    payload = {
+        "response": {
+            "badges": [
+                {"appid": None, "border_color": 0},
+                {"appid": "bad", "border_color": 0},
+                {"appid": 100, "border_color": 1, "cards_remaining": 4},
+                {"appid": 300, "border_color": 0, "cards_remaining": 0},
+                {"appid": 400, "border_color": 0},
+            ]
+        }
+    }
+    service = BadgeService(
+        make_settings(),
+        session=DummySession(response=DummyResponse(data=payload)),
+    )
+
+    app_ids = service.get_trading_card_badge_game_ids("123")
+
+    assert app_ids == {300, 400}
+
+
 def test_filter_logs_skipped_games(caplog):
     service = BadgeService(
         make_settings(),
@@ -114,7 +136,7 @@ def test_filter_logs_skipped_games(caplog):
     )
 
     result = service.filter_games_with_remaining_cards([1, 2], "123")
-    assert result == [1, 2]
+    assert result == []
 
     service2 = BadgeService(
         make_settings(),

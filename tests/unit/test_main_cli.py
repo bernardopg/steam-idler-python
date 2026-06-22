@@ -43,6 +43,9 @@ class DummyClient:
         self.stop_called = False
         self.logout_called = False
 
+    def get_web_session(self, username=None, password=None):
+        return None
+
     def initialize(self):
         return self.init_ok
 
@@ -165,6 +168,50 @@ def test_run_normal_mode_failure_paths(monkeypatch):
     bot.client.start_ok = False
     bot._run_normal_mode()
     assert any("Failed to start idling" in msg for level, msg in bot.logger.messages if level == "error")
+
+
+def test_ensure_client_ready_uses_failover_on_initialize_failure(monkeypatch):
+    bot = _build_bot()
+    bot.client.init_ok = False
+    called: list[str] = []
+    monkeypatch.setattr(
+        bot,
+        "_switch_to_steam_utility",
+        lambda reason, games=None: called.append(reason) or True,
+    )
+
+    assert bot._ensure_client_ready() is True
+    assert called == ["python client initialization failure"]
+
+
+def test_ensure_client_ready_uses_failover_on_login_failure(monkeypatch):
+    bot = _build_bot()
+    bot.client.login_ok = False
+    called: list[str] = []
+    monkeypatch.setattr(
+        bot,
+        "_switch_to_steam_utility",
+        lambda reason, games=None: called.append(reason) or True,
+    )
+
+    assert bot._ensure_client_ready() is True
+    assert called == ["python client login failure"]
+
+
+def test_run_normal_mode_uses_failover_when_start_idling_fails(monkeypatch):
+    bot = _build_bot()
+    bot.client.start_ok = False
+    switched: list[tuple[str, list[int] | None]] = []
+    monkeypatch.setattr(
+        bot,
+        "_switch_to_steam_utility",
+        lambda reason, games=None: switched.append((reason, games)) or True,
+    )
+    monkeypatch.setattr(bot, "_main_loop", lambda games, steam_id=None: None)
+
+    bot._run_normal_mode()
+
+    assert switched == [("failed to start idling with python backend", [10, 20])]
 
 
 def test_main_loop_handles_refresh_and_disconnect(monkeypatch):

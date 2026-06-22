@@ -11,6 +11,7 @@ from .config.settings import Settings
 from .steam.badges import BadgeService
 from .steam.client import SteamClientWrapper
 from .steam.games import GameManager
+from .steam.steam_utility import SteamUtilityIdleClient
 from .steam.trading_cards import TradingCardDetector
 from .utils.idle_tracker import IdleTracker
 from .utils.logger import setup_logging
@@ -26,7 +27,7 @@ class SteamIdleBot:
             log_file=settings.log_file,
             console_output=console_output,
         )
-        self.client = SteamClientWrapper(settings)
+        self.client = build_steam_client(settings)
         # Build retrying HTTP sessions for resilient HTTP calls
         store_session = TradingCardDetector.build_session()
         self.trading_card_detector = TradingCardDetector(
@@ -87,18 +88,14 @@ class SteamIdleBot:
         """Run in normal mode with Steam connection."""
         self.logger.info("Starting Steam Idle Bot...")
 
-        # Initialize Steam client
-        if not self.client.initialize():
-            self.logger.error("Failed to initialize Steam client")
+        if not self._ensure_client_ready():
             sys.exit(1)
 
-        # Login to Steam
-        if not self.client.login():
-            self.logger.error("Failed to login to Steam")
-            sys.exit(1)
+        self._configure_authenticated_web_session()
+        steam_id = self._resolve_active_steam_id()
 
         # Get games to idle
-        games = self.game_manager.get_games_to_idle(self.client.steam_id)
+        games = self.game_manager.get_games_to_idle(steam_id)
 
         if not games:
             self.logger.error("No games to idle")
@@ -115,13 +112,18 @@ class SteamIdleBot:
 
         # Start idling
         if not self.client.start_idling(games):
-            self.logger.error("Failed to start idling")
-            return
+            if not self._switch_to_steam_utility(
+                "failed to start idling with python backend",
+                games=games,
+            ):
+                self.logger.error("Failed to start idling")
+                return
+            steam_id = self._resolve_active_steam_id()
 
         self._running = True
-        self._main_loop(games)
+        self._main_loop(games, steam_id=steam_id)
 
-    def _main_loop(self, games: list[int]) -> None:
+    def _main_loop(self, games: list[int], steam_id: str | None = None) -> None:
         """Main idle loop."""
         self.logger.info("Entering main idle loop...")
         self.logger.info("Press Ctrl+C to stop")
@@ -129,6 +131,8 @@ class SteamIdleBot:
         refresh_interval = 600  # 10 minutes
         last_refresh = time.time()
         loop_sleep_seconds = 1
+        reconnect_cooldown_seconds = 10
+        next_reconnect_attempt = 0.0
 
         while self._running:
             try:
@@ -141,7 +145,11 @@ class SteamIdleBot:
                     self.logger.info("Refreshing game status...")
 
                     # Get fresh games list
-                    new_games = self.game_manager.get_games_to_idle(self.client.steam_id)
+                    refreshed_steam_id = self.client.steam_id or steam_id
+                    if not refreshed_steam_id:
+                        refreshed_steam_id = self.game_manager.resolve_active_steam_id()
+
+                    new_games = self.game_manager.get_games_to_idle(refreshed_steam_id)
 
                     if new_games != games:
                         self.logger.info(f"Updating games from {len(games)} to {len(new_games)}")
@@ -152,8 +160,35 @@ class SteamIdleBot:
 
                 # Check connection
                 if not self.client.is_connected():
+                    now = time.time()
+                    if now < next_reconnect_attempt:
+                        continue
+
                     self.logger.warning("Lost connection to Steam, attempting to reconnect...")
-                    # Could add reconnection logic here
+                    if self.client.reconnect():
+                        self.logger.info("Reconnected to Steam")
+                        if games:
+                            if self.client.start_idling(games):
+                                self.logger.info(
+                                    "Resumed idling %s games after reconnect",
+                                    len(games),
+                                )
+                            else:
+                                self.logger.warning("Reconnected but failed to resume idling")
+                                if self._switch_to_steam_utility(
+                                    "failed to resume idling after reconnect",
+                                    games=games,
+                                ):
+                                    steam_id = self._resolve_active_steam_id()
+                    else:
+                        if self._switch_to_steam_utility(
+                            "reconnect failure on python backend",
+                            games=games,
+                        ):
+                            steam_id = self._resolve_active_steam_id()
+                        else:
+                            self.logger.warning("Reconnect attempt failed; retrying shortly")
+                            next_reconnect_attempt = now + reconnect_cooldown_seconds
 
             except KeyboardInterrupt:
                 self.logger.info("Received interrupt signal")
@@ -247,6 +282,114 @@ class SteamIdleBot:
 
         self._running = False
         self.logger.info("Steam Idle Bot stopped")
+
+    def _get_authenticated_web_session(self):
+        """Build an authenticated Steam web session with backward compatibility."""
+        client_get_web_session = getattr(self.client, "get_web_session", None)
+        if not callable(client_get_web_session):
+            return None
+
+        kwargs = {
+            "username": self.settings.username,
+            "password": self.settings.password,
+        }
+
+        cookies = self.settings.steam_web_cookies or None
+        if cookies is not None:
+            kwargs["cookies"] = cookies
+
+        try:
+            return client_get_web_session(**kwargs)
+        except TypeError:
+            # Older test doubles or client shims may not accept the newer cookies
+            # parameter yet. Retry with the legacy signature instead of failing.
+            return client_get_web_session(
+                username=self.settings.username,
+                password=self.settings.password,
+            )
+
+    def _ensure_client_ready(self) -> bool:
+        """Initialize and login the active backend, switching if needed."""
+        if not self.client.initialize():
+            self.logger.error("Failed to initialize Steam client")
+            return self._switch_to_steam_utility("python client initialization failure")
+
+        if not self.client.login():
+            self.logger.error("Failed to login to Steam")
+            return self._switch_to_steam_utility("python client login failure")
+
+        return True
+
+    def _configure_authenticated_web_session(self) -> None:
+        """Configure the scraping layer with any authenticated web session available."""
+        web_session = self._get_authenticated_web_session()
+        if web_session:
+            self.game_manager.set_web_session(web_session)
+            self.logger.info("Authenticated Steam web session enabled for card-drop checks")
+        else:
+            self.logger.warning("Could not obtain authenticated Steam web session")
+
+    def _resolve_active_steam_id(self) -> str | None:
+        """Resolve the best available active SteamID."""
+        steam_id = self.client.steam_id
+        if steam_id:
+            return steam_id
+
+        steam_id = self.game_manager.resolve_active_steam_id()
+        if steam_id:
+            self.logger.info(f"Resolved active Steam ID via steam-utility fallback: {steam_id}")
+            return steam_id
+
+        self.logger.warning("Active Steam ID unavailable; completed-drop filtering may be skipped")
+        return None
+
+    def _switch_to_steam_utility(
+        self,
+        reason: str,
+        *,
+        games: list[int] | None = None,
+    ) -> bool:
+        """Switch from the python backend to steam-utility when available."""
+        if self.settings.idling_backend != "python":
+            return False
+
+        if not isinstance(self.client, SteamClientWrapper):
+            return False
+
+        if isinstance(self.client, SteamUtilityIdleClient):
+            return False
+
+        self.logger.warning(f"Switching idling backend from python to steam_utility: {reason}")
+
+        with contextlib.suppress(Exception):
+            self.client.stop_idling()
+        with contextlib.suppress(Exception):
+            self.client.logout()
+
+        fallback_client = build_steam_client(self.settings, backend="steam_utility")
+        if not fallback_client.initialize():
+            self.logger.error("steam_utility fallback failed to initialize")
+            return False
+        if not fallback_client.login():
+            self.logger.error("steam_utility fallback failed to connect")
+            return False
+
+        self.client = fallback_client
+        self._configure_authenticated_web_session()
+
+        if games and not self.client.start_idling(games):
+            self.logger.error("steam_utility fallback failed to start idling")
+            return False
+
+        return True
+
+
+def build_steam_client(settings: Settings, backend: str | None = None):
+    """Create the configured Steam backend."""
+    selected_backend = backend or settings.idling_backend
+    if selected_backend == "steam_utility":
+        return SteamUtilityIdleClient(settings)
+    return SteamClientWrapper(settings)
 
 
 def create_parser() -> argparse.ArgumentParser:

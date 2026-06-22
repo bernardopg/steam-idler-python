@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import (
@@ -13,6 +13,7 @@ from pydantic_settings import (
 )
 
 LIST_FIELDS = {"game_app_ids", "exclude_app_ids"}
+COOKIE_MAP_FIELDS = {"steam_web_cookies"}
 
 
 def _parse_int_list(value: Any) -> Any:
@@ -40,10 +41,84 @@ def _parse_int_list(value: Any) -> Any:
         return value
 
 
+def _parse_cookie_map(value: Any) -> Any:
+    """Parse Steam cookie env values.
+
+    Accepts:
+    - JSON object: {"cookie": "value"}
+    - JSON array export from browsers: [{"name":..., "value":..., "domain":...}, ...]
+    - Semicolon list: "cookie=value; other=value"
+    """
+    if not isinstance(value, str):
+        return value
+
+    raw_value = value.strip()
+    if raw_value == "":
+        return {}
+
+    if raw_value.startswith("{"):
+        try:
+            parsed = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return value
+
+        if isinstance(parsed, dict):
+            return {str(key): str(cookie_value) for key, cookie_value in parsed.items()}
+        return value
+
+    if raw_value.startswith("["):
+        try:
+            parsed = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return value
+
+        if isinstance(parsed, list):
+            normalized: list[dict[str, Any]] = []
+            for item in parsed:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name")
+                cookie_value = item.get("value")
+                if not name or cookie_value is None:
+                    continue
+                normalized.append(
+                    {
+                        "name": str(name),
+                        "value": str(cookie_value),
+                        "domain": str(item.get("domain", "steamcommunity.com")),
+                        "path": str(item.get("path", "/")),
+                        "secure": bool(item.get("secure", False)),
+                    }
+                )
+
+            return normalized
+
+        return value
+
+    cookies: dict[str, str] = {}
+    for chunk in raw_value.replace("\n", ";").split(";"):
+        part = chunk.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            return value
+        key, cookie_value = part.split("=", 1)
+        key = key.strip()
+        cookie_value = cookie_value.strip()
+        if not key:
+            return value
+        cookies[key] = cookie_value
+
+    return cookies if cookies else value
+
+
 def _prepare_special_field_value(field_name: str, value: Any) -> tuple[bool, Any]:
     """Normalize selected fields read from env before model validation."""
     if field_name in LIST_FIELDS:
         return True, _parse_int_list(value)
+
+    if field_name in COOKIE_MAP_FIELDS:
+        return True, _parse_cookie_map(value)
 
     if field_name == "max_checks" and isinstance(value, str) and not value.strip():
         return True, None
@@ -98,11 +173,23 @@ class Settings(BaseSettings):
         le=32,
         description="Maximum number of games to idle simultaneously (Steam limit: 32)",
     )
+    idling_backend: Literal["python", "steam_utility"] = Field(
+        default="python",
+        description="Backend used to keep Steam games idling",
+    )
+    steam_utility_path: str | None = Field(
+        default=None,
+        description="Optional path to the local steam-utility-multiplataform repository",
+    )
 
     # Steam API
     steam_api_key: str | None = Field(
         default=None,
         description="Steam Web API key for better functionality",
+    )
+    steam_web_cookies: Any = Field(
+        default_factory=lambda: {},
+        description="Steam browser cookies used to build an authenticated web session",
     )
 
     # Logging
@@ -245,7 +332,10 @@ class Settings(BaseSettings):
                     "EXCLUDE_APP_IDS": "exclude_app_ids",
                     "USE_OWNED_GAMES": "use_owned_games",
                     "MAX_GAMES_TO_IDLE": "max_games_to_idle",
+                    "IDLING_BACKEND": "idling_backend",
+                    "STEAM_UTILITY_PATH": "steam_utility_path",
                     "STEAM_API_KEY": "steam_api_key",
+                    "STEAM_WEB_COOKIES": "steam_web_cookies",
                     "LOG_LEVEL": "log_level",
                 }
 
@@ -289,7 +379,10 @@ class Settings(BaseSettings):
             "filter_completed_card_drops": "FILTER_COMPLETED_CARD_DROPS",
             "exclude_app_ids": "EXCLUDE_APP_IDS",
             "max_games_to_idle": "MAX_GAMES_TO_IDLE",
+            "idling_backend": "IDLING_BACKEND",
+            "steam_utility_path": "STEAM_UTILITY_PATH",
             "steam_api_key": "STEAM_API_KEY",
+            "steam_web_cookies": "STEAM_WEB_COOKIES",
             "log_level": "LOG_LEVEL",
             "log_file": "LOG_FILE",
             "api_timeout": "API_TIMEOUT",
@@ -309,8 +402,12 @@ class Settings(BaseSettings):
                 lines.append(f"{env_name}=")
                 continue
 
-            if isinstance(value, list):
+            if isinstance(value, list) and value and isinstance(value[0], dict):
+                rendered = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            elif isinstance(value, list):
                 rendered = ",".join(str(item) for item in value)
+            elif isinstance(value, dict):
+                rendered = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
             elif isinstance(value, bool):
                 rendered = "true" if value else "false"
             else:

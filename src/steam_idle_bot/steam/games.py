@@ -13,6 +13,7 @@ from ..utils.exceptions import (
     SteamAPITimeoutError,
 )
 from .card_drops import CardDropChecker
+from .steam_utility import SteamUtilityBridge, SteamUtilityError
 from .trading_cards import TradingCardDetector
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class GameManager:
         self.card_drop_checker = CardDropChecker(settings)
         self.detailed_logger = DetailedLogger(settings)
         self._owned_games_cache: list[int] | None = None
+        self._steam_utility_bridge: SteamUtilityBridge | None = None
 
     def get_owned_games(self, steam_id: str | None = None) -> list[int]:
         """
@@ -53,15 +55,21 @@ class GameManager:
         try:
             if self.settings.steam_api_key and steam_id:
                 games = self._get_owned_games_via_api(steam_id)
+                source = "api"
+            elif self._steam_utility_available:
+                logger.info("Steam Web API unavailable, using steam-utility local app discovery")
+                games = self._get_owned_games_via_steam_utility()
+                source = "steam_utility"
             else:
                 logger.warning("Steam API key not available, using configured game list")
                 games = self.settings.game_app_ids
+                source = "config"
 
             # Log the games retrieved
             self.detailed_logger.log_api_results(
                 "owned_games",
                 games,
-                {"source": ("api" if self.settings.steam_api_key and steam_id else "config")},
+                {"source": source},
             )
             return games
 
@@ -105,6 +113,36 @@ class GameManager:
         except requests.exceptions.RequestException as err:
             raise GameLibraryError(f"Network error retrieving owned games: {err}") from err
 
+    def _get_owned_games_via_steam_utility(self) -> list[int]:
+        """Get locally installed app IDs from the steam-utility project."""
+        bridge = self._get_steam_utility_bridge()
+        payload = bridge.run_json_command("apps")
+        if not isinstance(payload, list):
+            raise GameLibraryError("steam-utility apps payload is invalid")
+
+        games: list[int] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+
+            app_id = item.get("AppId")
+            if app_id is None:
+                continue
+            try:
+                app_id_int = int(app_id)
+            except (TypeError, ValueError):
+                continue
+
+            games.append(app_id_int)
+
+        if not games:
+            raise GameLibraryError("steam-utility did not return any installed Steam apps")
+
+        unique_games = list(dict.fromkeys(games))
+        self._owned_games_cache = unique_games
+        logger.info("Retrieved %s installed apps via steam-utility", len(unique_games))
+        return unique_games
+
     def get_games_to_idle(self, steam_id: str | None = None) -> list[int]:
         """
         Get the final list of games to idle based on configuration.
@@ -127,18 +165,53 @@ class GameManager:
         # Filter trading cards
         games_with_cards = all_games
         if self.settings.filter_trading_cards:
-            padded_target = self.settings.max_games_to_idle
-            if self.settings.filter_completed_card_drops:
-                padded_target += max(5, self.settings.max_games_to_idle // 2)
-                padded_target = min(padded_target, len(all_games))
+            candidate_limit = len(all_games) if self.settings.filter_completed_card_drops else self.settings.max_games_to_idle
 
-            logger.info("Filtering games with trading cards...")
-            games_with_cards = self.trading_card_detector.filter_games_with_trading_cards(
-                all_games,
-                max_games=padded_target,
-                max_checks=self.settings.max_checks,
-                skip_failures=self.settings.skip_failures,
-            )
+            if (
+                self.badge_service
+                and self.settings.steam_api_key
+                and steam_id
+                and hasattr(
+                    self.badge_service,
+                    "get_trading_card_badge_game_ids",
+                )
+            ):
+                logger.info("Filtering games with trading cards using badge catalog...")
+                try:
+                    badge_catalog = self.badge_service.get_trading_card_badge_game_ids(steam_id)
+                    catalog_games = [app_id for app_id in all_games if app_id in badge_catalog]
+                    unknown_catalog_games = [app_id for app_id in all_games if app_id not in badge_catalog]
+                    detected_unknown_games: list[int] = []
+                    if unknown_catalog_games:
+                        logger.info(
+                            "Badge catalog omitted %s candidate games; confirming those via store API...",
+                            len(unknown_catalog_games),
+                        )
+                        detected_unknown_games = self.trading_card_detector.filter_games_with_trading_cards(
+                            unknown_catalog_games,
+                            max_games=candidate_limit,
+                            max_checks=self.settings.max_checks,
+                            skip_failures=self.settings.skip_failures,
+                        )
+                    allowed_ids = set(catalog_games) | set(detected_unknown_games)
+                    games_with_cards = [app_id for app_id in all_games if app_id in allowed_ids]
+                    logger.info(f"Badge catalog returned {len(games_with_cards)} candidate games")
+                except BadgeServiceError as err:
+                    logger.warning(f"Badge catalog failed for trading card discovery: {err}, falling back to store API")
+                    games_with_cards = self.trading_card_detector.filter_games_with_trading_cards(
+                        all_games,
+                        max_games=candidate_limit,
+                        max_checks=self.settings.max_checks,
+                        skip_failures=self.settings.skip_failures,
+                    )
+            else:
+                logger.info("Filtering games with trading cards...")
+                games_with_cards = self.trading_card_detector.filter_games_with_trading_cards(
+                    all_games,
+                    max_games=candidate_limit,
+                    max_checks=self.settings.max_checks,
+                    skip_failures=self.settings.skip_failures,
+                )
             logger.info(f"Found {len(games_with_cards)} games with trading cards")
 
             self.detailed_logger.log_api_results("trading_cards", games_with_cards, {"total_checked": len(all_games)})
@@ -186,21 +259,7 @@ class GameManager:
 
         if not final_games:
             logger.warning("No games found to idle after filtering")
-            if self.settings.filter_completed_card_drops and len(games_with_drops) == len(games_with_cards):
-                # If filtering completed drops but no games remain and we couldn't actually filter,
-                # try with a more lenient approach assuming games have drops
-                # if status couldn't be determined
-                logger.info("Attempting fallback: including games that couldn't be checked")
-                # Return a subset of games with cards, assuming they have drops
-                # when status can't be determined
-                fallback_games = games_with_cards[: self.settings.max_games_to_idle]
-                if fallback_games:
-                    logger.info(f"Using fallback games: {fallback_games}")
-                    return fallback_games
-            # If filtering successfully determined no games have remaining drops, return empty
-            if len(games_with_drops) == 0:
-                return []
-            return self.settings.game_app_ids[: self.settings.max_games_to_idle]
+            return []
 
         logger.info(f"Final games to idle: {final_games}")
         return final_games
@@ -211,6 +270,41 @@ class GameManager:
         self.trading_card_detector.clear_cache()
         if self.badge_service:
             self.badge_service.clear_cache()
+
+    def set_web_session(self, session: object) -> None:
+        """Provide an authenticated Steam web session to the scraping layer."""
+        if hasattr(self.card_drop_checker, "set_session"):
+            self.card_drop_checker.set_session(session, authenticated_session=True)
+
+    def resolve_active_steam_id(self) -> str | None:
+        """Resolve the active Steam account via steam-utility when available."""
+        if not self._steam_utility_available:
+            return None
+
+        try:
+            report = self._get_steam_utility_bridge().get_state_report()
+        except SteamUtilityError as err:
+            logger.warning("steam-utility state-report failed: %s", err)
+            return None
+
+        steam_id = report.get("ActiveSteamId") or report.get("activeSteamId")
+        if steam_id is None:
+            return None
+
+        return str(steam_id)
+
+    @property
+    def _steam_utility_available(self) -> bool:
+        try:
+            self._get_steam_utility_bridge()
+            return True
+        except SteamUtilityError:
+            return False
+
+    def _get_steam_utility_bridge(self) -> SteamUtilityBridge:
+        if self._steam_utility_bridge is None:
+            self._steam_utility_bridge = SteamUtilityBridge(self.settings.steam_utility_path)
+        return self._steam_utility_bridge
 
     def _filter_completed_card_drops(self, games: list[int], steam_id: str | None) -> tuple[list[int], str]:
         if not games:
@@ -223,12 +317,46 @@ class GameManager:
         if self.badge_service and self.settings.steam_api_key:
             try:
                 logger.info("Consulting badge service for authoritative data...")
-                badge_filtered = self.badge_service.filter_games_with_remaining_cards(games, steam_id)
+                if hasattr(self.badge_service, "partition_games_by_remaining_cards"):
+                    badge_filtered, unknown_games = self.badge_service.partition_games_by_remaining_cards(
+                        games,
+                        steam_id,
+                    )
+                else:
+                    badge_filtered = self.badge_service.filter_games_with_remaining_cards(games, steam_id)
+                    unknown_games = []
+
                 logger.info(
-                    "Badge service completed: %s/%s games have remaining drops",
+                    "Badge service completed: %s/%s games have confirmed remaining drops",
                     len(badge_filtered),
                     len(games),
                 )
+
+                if unknown_games:
+                    if not getattr(self.card_drop_checker, "has_authenticated_session", False):
+                        logger.warning(
+                            "Authenticated web session unavailable; excluding %s games with unknown badge status",
+                            len(unknown_games),
+                        )
+                        return badge_filtered, "badge_service+unknown_excluded"
+
+                    logger.info(
+                        "Badge service returned unknown drop status for %s/%s games; checking those via web scraping...",
+                        len(unknown_games),
+                        len(games),
+                    )
+                    scraping_filtered = self.card_drop_checker.filter_games_with_drops(unknown_games, steam_id)
+                    allowed_ids = set(badge_filtered) | set(scraping_filtered)
+                    combined = [app for app in games if app in allowed_ids]
+                    logger.info(
+                        "Combined badge + scraping completed: %s/%s games have remaining drops",
+                        len(combined),
+                        len(games),
+                    )
+                    if not combined:
+                        logger.info("All candidate games have already dropped their trading cards")
+                    return combined, "badge_service+web_scraping"
+
                 if not badge_filtered:
                     logger.info("All candidate games have already dropped their trading cards")
                 return badge_filtered, "badge_service"
@@ -254,6 +382,6 @@ class GameManager:
         except Exception as err:
             logger.warning(f"Web scraping failed: {err}")
 
-        # If both badge service and web scraping failed, include all games as fallback
-        logger.warning("Could not check card drop status, including all games as fallback")
-        return games, "fallback_include_all"
+        # If both badge service and web scraping failed, stay conservative and idle nothing.
+        logger.warning("Could not check card drop status, excluding all candidate games")
+        return [], "fallback_exclude_all"

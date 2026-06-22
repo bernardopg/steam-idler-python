@@ -1,5 +1,7 @@
 """Tests for settings configuration."""
 
+import json
+
 import pytest
 
 from steam_idle_bot.config.settings import (
@@ -15,6 +17,7 @@ class TestSettings:
     def test_default_settings(self, tmp_path, monkeypatch):
         """Test default settings values."""
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
         settings = Settings(username="test_user", password="test_pass")
 
         assert settings.filter_trading_cards is True
@@ -22,6 +25,8 @@ class TestSettings:
         assert settings.filter_completed_card_drops is True
         assert settings.exclude_app_ids == []
         assert settings.max_games_to_idle == 30
+        assert settings.idling_backend == "python"
+        assert settings.steam_utility_path is None
         assert settings.game_app_ids == [570, 730]
         assert settings.log_level == "INFO"
 
@@ -34,10 +39,30 @@ class TestSettings:
         assert _parse_int_list("[broken") == "[broken"
         assert _parse_int_list("a,b") == "a,b"
 
+    def test_parse_cookie_map_helper(self):
+        """Test tolerant cookie map parsing helper."""
+        from steam_idle_bot.config.settings import _parse_cookie_map
+
+        assert _parse_cookie_map({"steamLoginSecure": "token"}) == {"steamLoginSecure": "token"}
+        assert _parse_cookie_map("") == {}
+        assert _parse_cookie_map('{"steamLoginSecure": "token"}') == {"steamLoginSecure": "token"}
+        assert _parse_cookie_map("steamLoginSecure=token; sessionid=abc") == {
+            "steamLoginSecure": "token",
+            "sessionid": "abc",
+        }
+        parsed_list = _parse_cookie_map('[{"name":"steamLoginSecure","value":"token","domain":"steamcommunity.com","path":"/","secure":true}]')
+        assert isinstance(parsed_list, list)
+        assert parsed_list[0]["name"] == "steamLoginSecure"
+        assert parsed_list[0]["domain"] == "steamcommunity.com"
+
     def test_prepare_special_field_value(self):
         """Test special field preparation for env parsing."""
         assert _prepare_special_field_value("game_app_ids", "10,20") == (True, [10, 20])
         assert _prepare_special_field_value("max_checks", "   ") == (True, None)
+        assert _prepare_special_field_value("steam_web_cookies", '{"steamLoginSecure": "token"}') == (
+            True,
+            {"steamLoginSecure": "token"},
+        )
         assert _prepare_special_field_value("username", "user") == (False, "user")
 
     def test_invalid_credentials(self):
@@ -88,6 +113,7 @@ class TestSettings:
             "GAME_APP_IDS",
             "EXCLUDE_APP_IDS",
             "MAX_CHECKS",
+            "STEAM_WEB_COOKIES",
         ):
             monkeypatch.delenv(key, raising=False)
 
@@ -99,6 +125,7 @@ class TestSettings:
                     "GAME_APP_IDS=570,730",
                     "EXCLUDE_APP_IDS=",
                     "MAX_CHECKS=",
+                    'STEAM_WEB_COOKIES={"steamLoginSecure":"token","sessionid":"abc"}',
                 ]
             ),
             encoding="utf-8",
@@ -112,6 +139,10 @@ class TestSettings:
         assert settings.game_app_ids == [570, 730]
         assert settings.exclude_app_ids == []
         assert settings.max_checks is None
+        assert settings.steam_web_cookies == {
+            "steamLoginSecure": "token",
+            "sessionid": "abc",
+        }
 
     def test_load_from_file_requires_credentials(self, tmp_path, monkeypatch):
         """Test clear error when credentials are missing in config.py and .env."""
@@ -123,6 +154,7 @@ class TestSettings:
             "GAME_APP_IDS",
             "EXCLUDE_APP_IDS",
             "MAX_CHECKS",
+            "STEAM_WEB_COOKIES",
         ):
             monkeypatch.delenv(key, raising=False)
 
@@ -157,13 +189,16 @@ class TestSettings:
         assert settings.filter_trading_cards is False
         assert settings.log_level == "WARNING"
 
-    def test_save_to_env_file(self, tmp_path):
+    def test_save_to_env_file(self, tmp_path, monkeypatch):
         """Test persisting settings in dotenv format for the GUI."""
+        monkeypatch.delenv("STEAM_WEB_COOKIES", raising=False)
+        monkeypatch.chdir(tmp_path)
         settings = Settings(
             username="gui_user",
             password="gui_pass",
             game_app_ids=[10, 20],
             exclude_app_ids=[30],
+            steam_web_cookies={"steamLoginSecure": "token", "sessionid": "abc"},
             log_file="steam_card_idler.log",
             max_checks=None,
         )
@@ -175,4 +210,12 @@ class TestSettings:
         assert "PASSWORD=gui_pass" in saved
         assert "GAME_APP_IDS=10,20" in saved
         assert "EXCLUDE_APP_IDS=30" in saved
+        assert "IDLING_BACKEND=python" in saved
+        assert "STEAM_UTILITY_PATH=" in saved
+        cookie_line = next(line for line in saved.splitlines() if line.startswith("STEAM_WEB_COOKIES="))
+        cookie_json = cookie_line.split("=", 1)[1]
+        assert json.loads(cookie_json) == {
+            "steamLoginSecure": "token",
+            "sessionid": "abc",
+        }
         assert "MAX_CHECKS=" in saved

@@ -1,4 +1,4 @@
-config.pya pull reque
+config.py
 .env
 .cache/
 __pycache__/
@@ -6,6 +6,7 @@ venv/
 .vscode/
 .venv/
 .mypy_cache/
+.serena/
 
 # Python build/cache
 *.pyc

@@ -112,12 +112,8 @@ class SteamIdleBotGUI:
                 "Helvetica",
             )
         )
-        self.ui_font = self._pick_font(
-            ("Aptos", "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", "Helvetica")
-        )
-        self.mono_font = self._pick_font(
-            ("JetBrains Mono", "Cascadia Code", "SF Mono", "Consolas", "Courier New")
-        )
+        self.ui_font = self._pick_font(("Aptos", "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", "Helvetica"))
+        self.mono_font = self._pick_font(("JetBrains Mono", "Cascadia Code", "SF Mono", "Consolas", "Courier New"))
         self.style = ttk.Style(self.root)
 
         self._configure_theme()
@@ -142,9 +138,7 @@ class SteamIdleBotGUI:
         default_font = (self.ui_font, 10)
         section_font = (self.ui_font, 11, "bold")
 
-        self.style.configure(
-            ".", background=PALETTE["bg"], foreground=PALETTE["text"], font=default_font
-        )
+        self.style.configure(".", background=PALETTE["bg"], foreground=PALETTE["text"], font=default_font)
         self.style.configure("App.TFrame", background=PALETTE["bg"])
         self.style.configure("Surface.TFrame", background=PALETTE["panel"])
         self.style.configure("Header.TFrame", background=PALETTE["panel"])
@@ -280,15 +274,9 @@ class SteamIdleBotGUI:
             ],
             foreground=[("selected", PALETTE["text"]), ("active", PALETTE["text"])],
         )
-        self.style.configure(
-            "App.TPanedwindow", background=PALETTE["bg"], sashrelief="flat"
-        )
-        self.style.layout(
-            "Vertical.App.TScrollbar", self.style.layout("Vertical.TScrollbar")
-        )
-        self.style.layout(
-            "Horizontal.App.TScrollbar", self.style.layout("Horizontal.TScrollbar")
-        )
+        self.style.configure("App.TPanedwindow", background=PALETTE["bg"], sashrelief="flat")
+        self.style.layout("Vertical.App.TScrollbar", self.style.layout("Vertical.TScrollbar"))
+        self.style.layout("Horizontal.App.TScrollbar", self.style.layout("Horizontal.TScrollbar"))
         for scrollbar_style in ("Vertical.App.TScrollbar", "Horizontal.App.TScrollbar"):
             self.style.configure(
                 scrollbar_style,
@@ -308,9 +296,7 @@ class SteamIdleBotGUI:
 
         hero = ttk.Frame(header, style="Header.TFrame")
         hero.grid(row=0, column=0, sticky="w")
-        ttk.Label(hero, text="Steam Idle Control Center", style="Title.TLabel").grid(
-            row=0, column=0, sticky="w"
-        )
+        ttk.Label(hero, text="Steam Idle Control Center", style="Title.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(
             hero,
             text="Configure sessions, review live logs and submit Steam auth codes in one place.",
@@ -319,9 +305,7 @@ class SteamIdleBotGUI:
 
         status_frame = ttk.Frame(header, style="Header.TFrame")
         status_frame.grid(row=0, column=1, sticky="e")
-        ttk.Label(status_frame, text="Status da sessão", style="Meta.TLabel").grid(
-            row=0, column=0, sticky="e", padx=(0, 10)
-        )
+        ttk.Label(status_frame, text="Status da sessão", style="Meta.TLabel").grid(row=0, column=0, sticky="e", padx=(0, 10))
         self._status_badge = tk.Label(
             status_frame,
             textvariable=self.status_var,
@@ -331,9 +315,7 @@ class SteamIdleBotGUI:
             font=(self.ui_font, 10, "bold"),
         )
         self._status_badge.grid(row=0, column=1, sticky="e")
-        ttk.Label(status_frame, text="Conta ativa", style="Meta.TLabel").grid(
-            row=1, column=0, sticky="e", padx=(0, 10), pady=(10, 0)
-        )
+        ttk.Label(status_frame, text="Conta ativa", style="Meta.TLabel").grid(row=1, column=0, sticky="e", padx=(0, 10), pady=(10, 0))
         self._account_badge = tk.Label(
             status_frame,
             textvariable=self.account_var,
@@ -375,9 +357,7 @@ class SteamIdleBotGUI:
         form = ttk.Frame(form_canvas, padding=16, style="Surface.TFrame")
         form.columnconfigure(1, weight=1)
         self._form_canvas = form_canvas
-        self._form_window_id = form_canvas.create_window(
-            (0, 0), window=form, anchor="nw"
-        )
+        self._form_window_id = form_canvas.create_window((0, 0), window=form, anchor="nw")
 
         form.bind("<Configure>", self._update_form_scrollregion)
         form_canvas.bind("<Configure>", self._resize_form_canvas_window)
@@ -494,9 +474,7 @@ class SteamIdleBotGUI:
         self._add_labeled_entry(behavior_frame, 0, "Max Games", self.max_games_var)
         self._add_labeled_entry(behavior_frame, 1, "Max Checks", self.max_checks_var)
         self._add_labeled_entry(behavior_frame, 2, "API Timeout", self.api_timeout_var)
-        self._add_labeled_entry(
-            behavior_frame, 3, "Rate Limit Delay", self.rate_limit_var
-        )
+        self._add_labeled_entry(behavior_frame, 3, "Rate Limit Delay", self.rate_limit_var)
         self._add_labeled_entry(behavior_frame, 4, "Log Level", self.log_level_var)
         self._add_labeled_entry(behavior_frame, 5, "Log File", self.log_file_var)
         row += 1
@@ -508,9 +486,7 @@ class SteamIdleBotGUI:
             default_open=False,
         )
         self._add_labeled_entry(selection_frame, 0, "Manual App IDs", self.game_ids_var)
-        self._add_labeled_entry(
-            selection_frame, 1, "Exclude App IDs", self.exclude_ids_var
-        )
+        self._add_labeled_entry(selection_frame, 1, "Exclude App IDs", self.exclude_ids_var)
         row += 1
 
         cache_frame = self._create_collapsible_section(
@@ -538,9 +514,7 @@ class SteamIdleBotGUI:
             ("Dry run", self.dry_run_var),
         ]
         for index, (label, variable) in enumerate(options):
-            ttk.Checkbutton(
-                options_frame, text=label, variable=variable, style="App.TCheckbutton"
-            ).grid(row=index, column=0, sticky="w", pady=2)
+            ttk.Checkbutton(options_frame, text=label, variable=variable, style="App.TCheckbutton").grid(row=index, column=0, sticky="w", pady=2)
         row += 1
 
         button_row = ttk.Frame(parent, padding=(0, 16, 0, 0))
@@ -639,12 +613,8 @@ class SteamIdleBotGUI:
         *,
         show: str | None = None,
     ) -> None:
-        ttk.Label(parent, text=label, style="FieldLabel.TLabel").grid(
-            row=row, column=0, sticky="w", padx=(0, 12), pady=6
-        )
-        entry = ttk.Entry(
-            parent, textvariable=variable, show=show or "", style="App.TEntry"
-        )
+        ttk.Label(parent, text=label, style="FieldLabel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 12), pady=6)
+        entry = ttk.Entry(parent, textvariable=variable, show=show or "", style="App.TEntry")
         entry.grid(row=row, column=1, sticky="ew", pady=4)
 
     def _load_initial_values(self) -> None:
@@ -658,13 +628,9 @@ class SteamIdleBotGUI:
         self.log_level_var.set(settings.log_level)
         self.log_file_var.set(settings.log_file or "steam_card_idler.log")
         self.game_ids_var.set(",".join(str(item) for item in settings.game_app_ids))
-        self.exclude_ids_var.set(
-            ",".join(str(item) for item in settings.exclude_app_ids)
-        )
+        self.exclude_ids_var.set(",".join(str(item) for item in settings.exclude_app_ids))
         self.max_games_var.set(str(settings.max_games_to_idle))
-        self.max_checks_var.set(
-            "" if settings.max_checks is None else str(settings.max_checks)
-        )
+        self.max_checks_var.set("" if settings.max_checks is None else str(settings.max_checks))
         self.api_timeout_var.set(str(settings.api_timeout))
         self.rate_limit_var.set(str(settings.rate_limit_delay))
         self.cache_path_var.set(settings.card_cache_path)
@@ -741,9 +707,7 @@ class SteamIdleBotGUI:
         bot.client.auth_code_provider = self._request_auth_code
 
         log_handler = QueueLogHandler(self._ui_queue)
-        log_handler.setFormatter(
-            logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
-        )
+        log_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
         logger = logging.getLogger(APP_LOGGER_NAME)
         logger.addHandler(log_handler)
 
@@ -837,11 +801,7 @@ class SteamIdleBotGUI:
             return
 
         code_type = "2FA" if request.is_2fa else "email"
-        prompt = (
-            f"The previous {code_type} code was rejected. Enter a new code:"
-            if request.code_mismatch
-            else f"Enter the {code_type} code from Steam:"
-        )
+        prompt = f"The previous {code_type} code was rejected. Enter a new code:" if request.code_mismatch else f"Enter the {code_type} code from Steam:"
 
         request.code = simpledialog.askstring(
             "Steam Authentication",

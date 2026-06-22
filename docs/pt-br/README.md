@@ -7,7 +7,7 @@ title: Steam Idle Bot (PT-BR)
 
 > 🚀 Automatize o farm de tempo de jogo e drops de cartas Steam sem esforço. Sem mais supervisão manual – apenas configure e deixe rodar! Com recursos inteligentes como detecção de emblemas, suporte Steam Guard e uma configuração Python moderna, é a ferramenta definitiva para entusiastas da Steam.
 
-[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/bernardopg/steam-idler-python.svg?style=social)](https://github.com/bernardopg/steam-idler-python/stargazers)
 
@@ -75,7 +75,7 @@ Comece rapidamente com estes passos simples. Usaremos UV para um ambiente Python
 
 ## 📦 Requisitos
 
-- **Python**: 3.9 ou superior (UV cuida disso para você).
+- **Python**: 3.12 ou superior (UV cuida disso para você).
 - **Conta Steam**: Com jogos que suportam cartas Steam.
 - **Chave Steam Web API** (recomendado): Para sincronização da biblioteca e filtro inteligente.
 - **Opcional**: Uma conta Steam dedicada para evitar interromper seu perfil principal.
@@ -219,7 +219,7 @@ PRs são bem-vindos! Inclua testes, atualize docs e descreva mudanças.
 | Credenciais não configuradas     | Preencha `config.py` ou defina vars de ambiente; evite placeholders.                    |
 | Falha no login                   | Verifique credenciais/2FA; cheque por bloqueios de conta.                               |
 | Sem jogos para idle               | Adicione chave API ou use `--no-trading-cards`.                                 |
-| Erros de import                  | Execute `uv sync`; garanta Python 3.9+.                                       |
+| Erros de import                  | Execute `uv sync`; garanta Python 3.12+.                                       |
 | Sem cartas dropando              | Verifique filtros; tente `--keep-completed-drops`.                             |
 
 Para mais, habilite `LOG_LEVEL=DEBUG` e abra uma [issue](https://github.com/bernardopg/steam-idler-python/issues) com logs redigidos.

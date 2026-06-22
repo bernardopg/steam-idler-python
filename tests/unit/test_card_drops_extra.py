@@ -80,10 +80,12 @@ def test_build_gamecards_url_empty_errors():
         ('<span class="progress_info_bold">não dará mais</span>', False),
         ('<span class="progress_info_bold">drops remaining</span>', True),
         ('<span class="progress_info_bold">3/5</span>', True),
-        ('<span class="progress_info_bold">2</span>', True),
-        ('<span class="progress_info_bold">unknown words</span>', True),
-        ("trading cards available", True),
-        ("completely unknown page", True),
+        ('<span class="progress_info_bold">2</span>', False),
+        ('<span class="progress_info_bold">unknown words</span>', False),
+        ('<div class="badge_title_stats_drops"></div>', False),
+        ("sign in to see more", False),
+        ("trading cards available", False),
+        ("completely unknown page", False),
         ("0 card drops remaining", False),
         ("2 card drops remaining", True),
     ],
@@ -123,3 +125,24 @@ def test_filter_games_with_drops_includes_on_errors():
 
     assert result == [1, 3]
     checker.detailed_logger.log_api_results.assert_called_once()
+
+
+def test_has_remaining_drops_includes_ambiguous_authenticated_badge_pages():
+    html = """
+    <title>Steam Community :: Steam Badges :: LIMBO</title>
+    <div class="badge_row depressed badge_gamecard_page">
+      <div class="badge_title_stats_drops"></div>
+      <div class="badge_card_set_cards"></div>
+    </div>
+    """
+    with patch(
+        "steam_idle_bot.steam.card_drops.CardDropChecker._build_session",
+        return_value=Sess(html),
+    ):
+        checker = CardDropChecker(
+            make_settings(),
+            authenticated_session=True,
+        )
+    checker.detailed_logger.log_scraping_result = Mock()
+
+    assert checker.has_remaining_drops(10, "omg_bitter") is True

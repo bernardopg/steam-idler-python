@@ -39,6 +39,12 @@ class FakeClient:
         self.logout_called = False
         self.should_remain_connected = True
 
+    def get_web_session(self, username=None, password=None, cookies=None):
+        return None
+
+    def reconnect(self) -> bool:
+        return self.should_remain_connected
+
     def initialize(self) -> bool:  # pragma: no cover - simple setter
         self.initialize_calls += 1
         return True
@@ -68,9 +74,10 @@ class FakeClient:
 
 
 class FakeGameManager:
-    def __init__(self, results: deque[list[int]] | None) -> None:
+    def __init__(self, results: deque[list[int]] | None, fallback_steam_id: str | None = None) -> None:
         self.results = results or deque()
         self.calls: list[str | None] = []
+        self.fallback_steam_id = fallback_steam_id
 
     def get_games_to_idle(self, steam_id: str | None) -> list[int]:
         self.calls.append(steam_id)
@@ -80,6 +87,9 @@ class FakeGameManager:
 
     def clear_cache(self) -> None:  # pragma: no cover - compatibility
         pass
+
+    def resolve_active_steam_id(self) -> str | None:
+        return self.fallback_steam_id
 
 
 def test_run_normal_mode_starts_idling_and_enters_main_loop(monkeypatch):
@@ -95,7 +105,8 @@ def test_run_normal_mode_starts_idling_and_enters_main_loop(monkeypatch):
 
     captured_games: list[list[int]] = []
 
-    def fake_main_loop(games: list[int]) -> None:  # type: ignore[override]
+    def fake_main_loop(games: list[int], steam_id: str | None = None) -> None:  # type: ignore[override]
+        del steam_id
         captured_games.append(list(games))
 
     monkeypatch.setattr(bot, "_main_loop", fake_main_loop)
@@ -107,6 +118,30 @@ def test_run_normal_mode_starts_idling_and_enters_main_loop(monkeypatch):
     assert client.start_calls == [[220, 333]]
     assert captured_games == [[220, 333]]
     assert manager.calls == [client.steam_id]
+
+
+def test_run_normal_mode_uses_fallback_steam_id_when_client_missing(monkeypatch):
+    settings = make_settings()
+    bot = SteamIdleBot(settings)
+
+    client = FakeClient(steam_id="")
+    games_sequence = deque([[220]])
+    manager = FakeGameManager(games_sequence, fallback_steam_id="76561198000000000")
+
+    bot.client = cast(SteamClientWrapper, client)
+    bot.game_manager = cast(GameManager, manager)
+
+    captured_games: list[list[int]] = []
+    monkeypatch.setattr(
+        bot,
+        "_main_loop",
+        lambda games, steam_id=None: captured_games.append(list(games)),
+    )
+
+    bot._run_normal_mode()
+
+    assert manager.calls == ["76561198000000000"]
+    assert captured_games == [[220]]
 
 
 def test_main_loop_refreshes_games_when_library_changes(monkeypatch):
@@ -142,3 +177,32 @@ def test_main_loop_refreshes_games_when_library_changes(monkeypatch):
     assert refreshed == [[222, 444]]
     assert client.sleep_calls == [1]
     assert manager.calls == [client.steam_id]
+
+
+def test_main_loop_switches_to_failover_when_reconnect_fails(monkeypatch):
+    settings = make_settings()
+    bot = SteamIdleBot(settings)
+
+    client = FakeClient()
+    client.should_remain_connected = False
+    manager = FakeGameManager(deque([[111, 222]]))
+    bot.client = cast(SteamClientWrapper, client)
+    bot.game_manager = cast(GameManager, manager)
+
+    times = iter([0.0, 0.0, 0.0])
+    monkeypatch.setattr(time, "time", lambda: next(times))
+
+    switched: list[tuple[str, list[int] | None]] = []
+
+    def fake_switch(reason: str, *, games: list[int] | None = None) -> bool:
+        switched.append((reason, games))
+        bot._running = False
+        return True
+
+    monkeypatch.setattr(bot, "_switch_to_steam_utility", fake_switch)
+    monkeypatch.setattr(client, "sleep", lambda seconds: None)
+
+    bot._running = True
+    bot._main_loop([111, 222], steam_id="123")
+
+    assert switched == [("reconnect failure on python backend", [111, 222])]
