@@ -45,11 +45,11 @@ class FakeClient:
     def reconnect(self) -> bool:
         return self.should_remain_connected
 
-    def initialize(self) -> bool:  # pragma: no cover - simple setter
+    def initialize(self) -> bool:
         self.initialize_calls += 1
         return True
 
-    def login(self) -> bool:  # pragma: no cover - simple setter
+    def login(self) -> bool:
         self.login_calls += 1
         return True
 
@@ -66,10 +66,10 @@ class FakeClient:
     def sleep(self, seconds: float) -> None:
         self.sleep_calls.append(seconds)
 
-    def stop_idling(self) -> None:  # pragma: no cover - simple setter
+    def stop_idling(self) -> None:
         self.stop_called = True
 
-    def logout(self) -> None:  # pragma: no cover - simple setter
+    def logout(self) -> None:
         self.logout_called = True
 
 
@@ -78,6 +78,7 @@ class FakeGameManager:
         self.results = results or deque()
         self.calls: list[str | None] = []
         self.fallback_steam_id = fallback_steam_id
+        self.game_names: dict[int, str] = {}
 
     def get_games_to_idle(self, steam_id: str | None) -> list[int]:
         self.calls.append(steam_id)
@@ -85,7 +86,7 @@ class FakeGameManager:
             return []
         return self.results.popleft()
 
-    def clear_cache(self) -> None:  # pragma: no cover - compatibility
+    def clear_cache(self) -> None:
         pass
 
     def resolve_active_steam_id(self) -> str | None:
@@ -105,7 +106,7 @@ def test_run_normal_mode_starts_idling_and_enters_main_loop(monkeypatch):
 
     captured_games: list[list[int]] = []
 
-    def fake_main_loop(games: list[int], steam_id: str | None = None) -> None:  # type: ignore[override]
+    def fake_main_loop(games: list[int], steam_id: str | None = None) -> None:
         del steam_id
         captured_games.append(list(games))
 
@@ -144,65 +145,102 @@ def test_run_normal_mode_uses_fallback_steam_id_when_client_missing(monkeypatch)
     assert captured_games == [[220]]
 
 
-def test_main_loop_refreshes_games_when_library_changes(monkeypatch):
+def test_main_loop_handles_keyboard_interrupt(monkeypatch):
     settings = make_settings()
-    bot = SteamIdleBot(settings)
+    bot = SteamIdleBot(settings, console_output=False)
 
     client = FakeClient()
-    manager = FakeGameManager(deque([[222, 444]]))
     bot.client = cast(SteamClientWrapper, client)
-    bot.game_manager = cast(GameManager, manager)
+    bot.game_manager = cast(FakeGameManager, FakeGameManager(deque()))
 
-    # Arrange time progression: initial last_refresh=0, then jump beyond interval
-    times = iter([0.0, 700.0, 700.0])
-    monkeypatch.setattr(time, "time", lambda: next(times))
+    def raising_sleep(seconds: float) -> None:
+        raise KeyboardInterrupt()
 
-    refreshed: list[list[int]] = []
+    monkeypatch.setattr(client, "sleep", raising_sleep)
+    monkeypatch.setattr(time, "time", lambda: 0.0)
 
-    def record_refresh(games: list[int]) -> None:  # type: ignore[override]
-        refreshed.append(list(games))
-        bot._running = False  # stop loop after first refresh
-
-    monkeypatch.setattr(client, "refresh_games", record_refresh)
-
-    def controlled_sleep(seconds: float) -> None:
-        client.sleep_calls.append(seconds)
-        # allow loop to continue; stop flag handled in refresh callback
-
-    monkeypatch.setattr(client, "sleep", controlled_sleep)
-
-    bot._running = True
-    bot._main_loop([111, 222])
-
-    assert refreshed == [[222, 444]]
-    assert client.sleep_calls == [1]
-    assert manager.calls == [client.steam_id]
+    bot._stop_event.clear()
+    # Should not raise
+    bot._main_loop([1])
 
 
-def test_main_loop_switches_to_failover_when_reconnect_fails(monkeypatch):
+def test_main_loop_recovers_from_generic_error(monkeypatch):
     settings = make_settings()
-    bot = SteamIdleBot(settings)
+    bot = SteamIdleBot(settings, console_output=False)
 
     client = FakeClient()
-    client.should_remain_connected = False
-    manager = FakeGameManager(deque([[111, 222]]))
     bot.client = cast(SteamClientWrapper, client)
+    bot.game_manager = cast(FakeGameManager, FakeGameManager(deque()))
+
+    call_count = {"n": 0}
+
+    def error_then_stop(seconds: float) -> None:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("transient error")
+        bot._stop_event.set()
+
+    monkeypatch.setattr(client, "sleep", error_then_stop)
+    monkeypatch.setattr(time, "time", lambda: 0.0)
+
+    bot._stop_event.clear()
+    bot._main_loop([1])
+
+    assert call_count["n"] == 2  # first raises, second stops
+
+
+def test_stop_sets_event_and_stops_idling():
+    settings = make_settings()
+    bot = SteamIdleBot(settings, console_output=False)
+
+    client = FakeClient()
+    bot.client = cast(SteamClientWrapper, client)
+
+    bot._stop_event.clear()
+    assert not bot._stop_event.is_set()
+
+    bot.stop()
+
+    assert bot._stop_event.is_set()
+    assert client.stop_called
+
+
+def test_stop_is_idempotent():
+    settings = make_settings()
+    bot = SteamIdleBot(settings, console_output=False)
+
+    client = FakeClient()
+    bot.client = cast(SteamClientWrapper, client)
+
+    bot._stop_event.set()
+    bot.stop()  # should not raise or re-call stop_idling
+
+
+def test_cleanup_sets_stop_event():
+    settings = make_settings()
+    bot = SteamIdleBot(settings, console_output=False)
+
+    client = FakeClient()
+    bot.client = cast(SteamClientWrapper, client)
+
+    bot._stop_event.clear()
+    bot._cleanup()
+
+    assert bot._stop_event.is_set()
+    assert client.stop_called
+    assert client.logout_called
+
+
+def test_game_name_map_returns_empty_when_no_names():
+    settings = make_settings()
+    bot = SteamIdleBot(settings, console_output=False)
+    assert bot._game_name_map() == {}
+
+
+def test_game_name_map_returns_manager_names():
+    settings = make_settings()
+    bot = SteamIdleBot(settings, console_output=False)
+    manager = FakeGameManager(deque())
+    manager.game_names = {10: "Game A", 20: "Game B"}
     bot.game_manager = cast(GameManager, manager)
-
-    times = iter([0.0, 0.0, 0.0])
-    monkeypatch.setattr(time, "time", lambda: next(times))
-
-    switched: list[tuple[str, list[int] | None]] = []
-
-    def fake_switch(reason: str, *, games: list[int] | None = None) -> bool:
-        switched.append((reason, games))
-        bot._running = False
-        return True
-
-    monkeypatch.setattr(bot, "_switch_to_steam_utility", fake_switch)
-    monkeypatch.setattr(client, "sleep", lambda seconds: None)
-
-    bot._running = True
-    bot._main_loop([111, 222], steam_id="123")
-
-    assert switched == [("reconnect failure on python backend", [111, 222])]
+    assert bot._game_name_map() == {10: "Game A", 20: "Game B"}

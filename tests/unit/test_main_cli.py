@@ -76,10 +76,13 @@ class DummyBadgeService:
         self.result = result or {}
         self.exc = exc
 
-    def _fetch_cards_remaining(self, steam_id):
+    def get_cards_remaining(self, steam_id):
         if self.exc:
             raise self.exc
         return self.result
+
+    def _fetch_cards_remaining(self, steam_id):
+        return self.get_cards_remaining(steam_id)
 
 
 class DummyGameManager:
@@ -216,10 +219,10 @@ def test_run_normal_mode_uses_failover_when_start_idling_fails(monkeypatch):
 
 def test_main_loop_handles_refresh_and_disconnect(monkeypatch):
     bot = _build_bot()
-    bot._running = True
+    bot._stop_event.clear()
 
     def get_games(_steam_id):
-        bot._running = False
+        bot._stop_event.set()
         return [10, 30]
 
     bot.game_manager.get_games_to_idle = get_games
@@ -235,7 +238,7 @@ def test_main_loop_handles_refresh_and_disconnect(monkeypatch):
 
 def test_main_loop_handles_errors(monkeypatch):
     bot = _build_bot()
-    bot._running = True
+    bot._stop_event.clear()
 
     monkeypatch.setattr("time.time", lambda: 0.0)
 
@@ -245,7 +248,7 @@ def test_main_loop_handles_errors(monkeypatch):
         calls["count"] += 1
         if calls["count"] == 1:
             raise RuntimeError("loop error")
-        bot._running = False
+        bot._stop_event.set()
 
     bot.client.sleep = fake_sleep
     bot._main_loop([10, 20])
@@ -253,7 +256,7 @@ def test_main_loop_handles_errors(monkeypatch):
 
 def test_main_loop_keyboard_interrupt_stops(monkeypatch):
     bot = _build_bot()
-    bot._running = True
+    bot._stop_event.clear()
     bot.client.sleep = lambda seconds: (_ for _ in ()).throw(KeyboardInterrupt())
     bot._main_loop([1])
 
@@ -402,6 +405,10 @@ def test_main_keyboard_interrupt_and_fatal(monkeypatch, capsys):
     assert exits == [1]
 
 
+@pytest.mark.skipif(
+    not importlib.util.find_spec("tkinter"),
+    reason="tkinter not installed",
+)
 def test_main_gui_launches_without_loading_settings(monkeypatch):
     parser = SimpleNamespace(
         parse_args=lambda: SimpleNamespace(
