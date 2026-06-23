@@ -1,6 +1,6 @@
 """Steam Idle Bot - A modern Steam game idling tool with trading card support."""
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 __author__ = "Steam Idle Bot Team"
 __description__ = "Steam Idle Bot with Trading Card Support"
 

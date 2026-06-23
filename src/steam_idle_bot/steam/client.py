@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 AuthCodeProvider = Callable[[bool, bool], str | None]
 
 
+def _mask_username(username: str | None) -> str:
+    """Mask a username for safe logging (e.g. 'ste***bot')."""
+    if not username or len(username) <= 3:
+        return "***"
+    return f"{username[:3]}***{username[-1]}"
+
+
 class SteamClientWrapper:
     """Wrapper for Steam client with enhanced functionality."""
 
@@ -74,7 +81,7 @@ class SteamClientWrapper:
             logger.info("=" * 60)
             logger.info("🔐 STEAM LOGIN REQUIRED")
             logger.info("=" * 60)
-            logger.info(f"Username: {self.settings.username}")
+            logger.info(f"Username: {_mask_username(self.settings.username)}")
             logger.info("⚠️  IMPORTANT: Check your Steam Mobile App or Email")
             if auth_code_provider or self.auth_code_provider:
                 logger.info("⚠️  Enter the authentication code in the active interface")
@@ -207,7 +214,7 @@ class SteamClientWrapper:
             elif self._client and hasattr(self._client, "user") and self._client.user:
                 self._username = getattr(self._client.user, "username", "Unknown")
 
-            logger.info(f"Logged in as: {self._username or 'Unknown'}")
+            logger.info(f"Logged in as: {_mask_username(self._username) or 'Unknown'}")
             if self._steam_id:
                 logger.debug(f"Steam ID: {self._steam_id}")
 
