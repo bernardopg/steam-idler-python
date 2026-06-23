@@ -8,21 +8,38 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
-- CLI: Support `--config PATH` to load a custom configuration file (matches documentation).
-- README: Language toggle badges (English / Português-BR) at the top.
+- Drops: persistent **no-drop cache** (`.cache/no_drop_cards.json`, per account) — games
+  confirmed without remaining drops are skipped on later runs, so each run scans less.
+  New settings `DROP_CACHE_PATH` / `DROP_CACHE_TTL_DAYS`.
+- Auth: **session verification** before trusting card-drop verdicts — a logged-out /
+  store-only (`web:store`) session is detected and reported instead of silently idling
+  drained games.
+- Auth: **browser cookie recovery** — recover a valid `web:community` session from a
+  locally logged-in browser. New settings `AUTO_BROWSER_COOKIES` / `BROWSER_COOKIES_BROWSER`
+  (via the optional `browser-cookie3` dependency, import-guarded).
+- UX: rich terminal **status panel** (game names, cards remaining, idle time) at start
+  and on each refresh; resolved game names from the Steam API.
+- UX: card-drop counts parsed from badge pages so the panel and session report show real
+  numbers even when the badge API has no `cards_remaining`.
+- CLI: `--config PATH` to load a custom configuration file.
+- README: language toggle badges (English / Português-BR).
 
 ### Changed
 
-- Docs (EN/PT-BR):
-  - Removed outdated reference to gevent; clarified we use resilient HTTP sessions with retries/backoff.
-  - Clarified environment variable precedence and `.env` behavior when running via UV.
-  - Fixed Security links in localized READMEs to point to local `SECURITY.md`.
-  - Minor wording tweaks and reminders not to commit `config.py`.
+- Drops: card-drop scraping only re-checks games that still had drops plus new games;
+  per-game scrape/badge log spam moved to `DEBUG`, with concise summaries and scan progress.
+- Docs (EN/PT-BR): rewritten for clarity — added Authentication & card-drop accuracy guide,
+  idling backends, caches, GUI, and a full configuration reference; `.env` is now the
+  documented primary config path. Security policy now covers cookie handling and the
+  accepted protobuf advisories.
 
 ### Fixed
 
-- Ensured USAGE and README CLI flags and behavior align with code (e.g., `--config`, caching, and filtering flags).
+- Card-drop filtering no longer idles fully-farmed games (or misses games with real drops)
+  when the web session is not genuinely authenticated against `steamcommunity.com`.
 
-### Internal
+### Security
 
-- No behavior changes to idling logic; documentation and CLI parity improvements only.
+- Documented why `protobuf` stays pinned `<4` (enforced by `steam[client]`), making
+  advisories GHSA-8qvm-5x2c-j2w7 / GHSA-7gcm-g887-7qv7 non-actionable; accepted as
+  tolerable risk (only trusted Steam-server data is deserialized).

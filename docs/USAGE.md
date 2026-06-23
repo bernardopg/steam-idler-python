@@ -1,60 +1,57 @@
 # Usage Guide
 
-Your quick reference for day-to-day Steam Idle Bot commands. For a deeper dive, check the main README.
+> This page is kept for compatibility. The maintained guides live at
+> [`docs/en/USAGE.md`](en/USAGE.md) and [`docs/pt-br/USAGE.md`](pt-br/USAGE.md).
+
+Your quick reference for day-to-day Steam Idle Bot commands. For setup,
+configuration, and architecture, see the [English README](en/README.md).
 
 ---
 
-## 🔁 Everyday Commands
+## 🔁 Everyday commands
 
 ```bash
-# Dry run – prints configuration, no login required
+# Preview config + chosen games — no Steam contact, no login
 ./run.sh --dry-run
 
-# Start idling (Steam Guard challenge will appear if needed)
+# Start idling (terminal). Steam Guard prompt appears if needed
 ./run.sh
 
-# Launch through UV without the helper script
+# Desktop GUI
+./run-gui.sh
+
+# Direct module entry
 uv run python -m steam_idle_bot --dry-run
 ```
 
 ---
 
-## 🕹️ CLI Flags Cheat Sheet
+## 🕹️ CLI flags cheat sheet
 
 | Flag | What it does |
 | --- | --- |
 | `--dry-run` | Preview games and settings without touching Steam |
-| `--no-trading-cards` | Skip store lookups and accept the supplied game list |
-| `--keep-completed-drops` | Include games that already exhausted their badge drops |
+| `--gui` | Launch the desktop GUI |
+| `--no-trading-cards` | Skip card detection and accept the supplied game list |
+| `--keep-completed-drops` | Include games that already exhausted their drops |
 | `--max-games N` | Override the maximum number of concurrent games |
 | `--config PATH` | Load configuration from a custom location |
-| `--no-cache` | Ignore the on-disk trading-card cache for this run |
-| `--max-checks N` | Stop store lookups after `N` successes (large libraries) |
+| `--no-cache` | Ignore the on-disk caches for this run |
+| `--max-checks N` | Stop card lookups after `N` checks (large libraries) |
 | `--skip-failures` | Suppress non-timeout warnings while checking cards |
 
-Combine flags to suit the session:
+---
 
-```bash
-# Ignore card filters and idle the first ten games in your list
-./run.sh --no-trading-cards --keep-completed-drops --max-games 10
+## 📝 Configuration reminders
 
-# Cut down on API calls for massive libraries
-./run.sh --max-checks 50 --skip-failures
-
-# One-off dry-run without touching config.py
-STEAM_USERNAME=foo STEAM_PASSWORD=bar ./run.sh --dry-run
-```
+- **Preferred:** copy `.env.example` to `.env` and fill it in. **Never commit `.env`.**
+- **Precedence:** CLI flags → environment variables → `.env` → defaults.
+- For accurate drop filtering, keep `AUTO_BROWSER_COOKIES=true` and stay logged
+  into Steam in your browser — see the README's Authentication section.
+- A legacy `config.py` is still read if present, but is discouraged.
 
 ---
 
-## 📝 Configuration Reminders
+## 📚 More resources
 
-- Copy `config_example.py` to `config.py` and fill in real credentials (keep it out of Git).
-- Environment variables take precedence. Use either `USERNAME`/`PASSWORD` or `STEAM_USERNAME`/`STEAM_PASSWORD`. `STEAM_API_KEY` is optional but recommended.
-- `.env` files are supported when running via UV; values from `.env` act like environment variables.
-
----
-
-## 📚 More Resources
-
-- Installation, architecture, and troubleshooting: see `README.md`.
+- Full guides: [English](en/README.md) · [Português (BR)](pt-br/README.md)
