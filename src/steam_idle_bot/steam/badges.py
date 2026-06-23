@@ -115,6 +115,10 @@ class BadgeService:
         filtered, _unknown = self.partition_games_by_remaining_cards(game_ids, steam_id)
         return filtered
 
+    def get_cards_remaining(self, steam_id: str) -> dict[int, int]:
+        """Public API: return a map of app_id -> cards_remaining for the given user."""
+        return self._fetch_cards_remaining(steam_id)
+
     def _fetch_cards_remaining(self, steam_id: str) -> dict[int, int]:
         badges = self._fetch_badges(steam_id)
         cards_remaining: dict[int, int] = {}

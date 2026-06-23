@@ -94,6 +94,10 @@ class IdleTracker:
             return
         self._pending_cards_before[app_id] = count
 
+    def has_pending_card_before(self, app_id: int) -> bool:
+        """Check if a card count has been recorded but not yet applied to a game."""
+        return app_id in self._pending_cards_before
+
     def set_cards_after(self, app_id: int, count: int) -> None:
         """Record the number of cards remaining after idling."""
         if app_id in self.games:

@@ -288,45 +288,36 @@ class SteamIdleBot:
         """Capture the current number of cards remaining for each game."""
         try:
             badge_service = self.game_manager.badge_service
-            if badge_service and hasattr(badge_service, "_fetch_cards_remaining"):
+            if badge_service and hasattr(badge_service, "get_cards_remaining"):
                 steam_id = self.client.steam_id
                 if steam_id:
-                    cards = badge_service._fetch_cards_remaining(steam_id)
+                    cards = badge_service.get_cards_remaining(steam_id)
                     for app_id, count in cards.items():
                         self._idle_tracker.set_cards_before(app_id, count)
                     self.logger.info(f"Captured initial card counts for {len(cards)} games")
-            else:
-                # No badge service available, set from game_manager if it has data
-                if hasattr(self.game_manager, "_card_counts"):
-                    for app_id, count in self.game_manager._card_counts.items():
-                        self._idle_tracker.set_cards_before(app_id, count)
 
             # Fallback/augment: counts parsed by the scraper during filtering. This
             # populates the panel/report when the badge API has no card data.
             if hasattr(self.game_manager, "get_drop_counts"):
                 for app_id, count in self.game_manager.get_drop_counts().items():
-                    if self._idle_tracker._pending_cards_before.get(app_id) is None and (
+                    if self._idle_tracker.has_pending_card_before(app_id) is False and (
                         app_id not in self._idle_tracker.games or self._idle_tracker.games[app_id].cards_before is None
                     ):
                         self._idle_tracker.set_cards_before(app_id, count)
         except Exception as e:
-            self.logger.debug(f"Could not capture initial card counts: {e}")
+            self.logger.warning(f"Could not capture initial card counts: {e}")
 
     def _capture_final_cards(self) -> None:
         """Capture the final number of cards remaining for each game."""
         try:
             badge_service = self.game_manager.badge_service
-            if badge_service and hasattr(badge_service, "_fetch_cards_remaining"):
+            if badge_service and hasattr(badge_service, "get_cards_remaining"):
                 steam_id = self.client.steam_id
                 if steam_id:
-                    cards = badge_service._fetch_cards_remaining(steam_id)
+                    cards = badge_service.get_cards_remaining(steam_id)
                     for app_id, count in cards.items():
                         self._idle_tracker.set_cards_after(app_id, count)
                     self.logger.info(f"Captured final card counts for {len(cards)} games")
-            else:
-                if hasattr(self.game_manager, "_card_counts"):
-                    for app_id, count in self.game_manager._card_counts.items():
-                        self._idle_tracker.set_cards_after(app_id, count)
 
             # Fallback/augment: re-scrape idled games to read current counts so the
             # session report can show how many cards dropped while idling.
@@ -337,7 +328,7 @@ class SteamIdleBot:
                     if game is None or game.cards_after is None:
                         self._idle_tracker.set_cards_after(app_id, count)
         except Exception as e:
-            self.logger.debug(f"Could not capture final card counts: {e}")
+            self.logger.warning(f"Could not capture final card counts: {e}")
 
     def _show_session_report(self) -> None:
         """Show the session report when bot stops."""
