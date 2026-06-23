@@ -224,6 +224,26 @@ class Settings(BaseSettings):
         le=365,
         description="TTL for trading card cache entries (days)",
     )
+    drop_cache_path: str = Field(
+        default=".cache/no_drop_cards.json",
+        description="Path to JSON cache for games confirmed without remaining card drops",
+    )
+    drop_cache_ttl_days: int = Field(
+        default=90,
+        ge=1,
+        le=365,
+        description="TTL for no-drop cache entries (days); re-checked after expiry",
+    )
+
+    # Browser cookie recovery
+    auto_browser_cookies: bool = Field(
+        default=True,
+        description="When the web session is not community-authenticated, recover cookies from a locally logged-in browser",
+    )
+    browser_cookies_browser: str = Field(
+        default="auto",
+        description="Browser to read Steam cookies from: auto, chrome, firefox, edge, brave, chromium, opera, vivaldi, librewolf",
+    )
 
     # Filtering controls
     max_checks: int | None = Field(
@@ -390,6 +410,10 @@ class Settings(BaseSettings):
             "enable_card_cache": "ENABLE_CARD_CACHE",
             "card_cache_path": "CARD_CACHE_PATH",
             "card_cache_ttl_days": "CARD_CACHE_TTL_DAYS",
+            "drop_cache_path": "DROP_CACHE_PATH",
+            "drop_cache_ttl_days": "DROP_CACHE_TTL_DAYS",
+            "auto_browser_cookies": "AUTO_BROWSER_COOKIES",
+            "browser_cookies_browser": "BROWSER_COOKIES_BROWSER",
             "max_checks": "MAX_CHECKS",
             "skip_failures": "SKIP_FAILURES",
             "enable_encryption": "ENABLE_ENCRYPTION",

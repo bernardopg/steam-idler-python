@@ -22,6 +22,7 @@ class SteamIdleBot:
 
     def __init__(self, settings: Settings, *, console_output: bool = True):
         self.settings = settings
+        self._console_output = console_output
         self.logger = setup_logging(
             level=settings.log_level,
             log_file=settings.log_file,
@@ -46,6 +47,7 @@ class SteamIdleBot:
         self.game_manager = GameManager(settings, self.trading_card_detector, badge_service)
         self._idle_tracker = IdleTracker()
         self._games_to_idle: list[int] = []
+        self._steam_id: str | None = None
         self._running = False
         self._last_report = ""
         self.report_callback: Callable[[str], None] | None = None
@@ -94,6 +96,16 @@ class SteamIdleBot:
         self._configure_authenticated_web_session()
         steam_id = self._resolve_active_steam_id()
 
+        # Confirm the scraping session is genuinely authenticated (a built session
+        # object can still be a logged-out store-only token, which silently breaks
+        # drop detection). This logs a clear warning when it is not.
+        if steam_id and self.settings.filter_completed_card_drops and hasattr(self.game_manager, "verify_web_session"):
+            authenticated = self.game_manager.verify_web_session(steam_id)
+            if not authenticated and self.settings.auto_browser_cookies and self._recover_session_via_browser(steam_id):
+                self.game_manager.verify_web_session(steam_id)
+
+        self._steam_id = steam_id
+
         # Get games to idle
         games = self.game_manager.get_games_to_idle(steam_id)
 
@@ -107,8 +119,8 @@ class SteamIdleBot:
         # Record initial card counts if badge service is available
         self._capture_initial_cards()
 
-        # Start idling tracker
-        self._idle_tracker.start_session(games)
+        # Start idling tracker (with resolved game names when available)
+        self._idle_tracker.start_session(games, self._game_name_map())
 
         # Start idling
         if not self.client.start_idling(games):
@@ -121,6 +133,7 @@ class SteamIdleBot:
             steam_id = self._resolve_active_steam_id()
 
         self._running = True
+        self._print_status_panel(games)
         self._main_loop(games, steam_id=steam_id)
 
     def _main_loop(self, games: list[int], steam_id: str | None = None) -> None:
@@ -155,7 +168,9 @@ class SteamIdleBot:
                         self.logger.info(f"Updating games from {len(games)} to {len(new_games)}")
                         games = new_games
                         self.client.refresh_games(games)
+                        self._idle_tracker.game_names.update(self._game_name_map())
 
+                    self._print_status_panel(games)
                     last_refresh = time.time()
 
                 # Check connection
@@ -207,6 +222,68 @@ class SteamIdleBot:
         with contextlib.suppress(Exception):
             self.client.stop_idling()
 
+    def _game_name_map(self) -> dict[int, str]:
+        """Best-effort map of app_id -> name from the game manager."""
+        names = getattr(self.game_manager, "game_names", None)
+        return dict(names) if isinstance(names, dict) else {}
+
+    def _print_status_panel(self, games: list[int]) -> None:
+        """Render a concise terminal panel of what is currently being idled."""
+        if not self._console_output:
+            return
+
+        try:
+            from rich.box import ROUNDED
+            from rich.console import Console
+            from rich.table import Table
+        except Exception:  # pragma: no cover - rich always present in deps
+            return
+
+        names = self._game_name_map()
+        tracker = self._idle_tracker
+
+        # Cards remaining per game, when the badge service can provide it.
+        cards_remaining: dict[int, int] = {}
+        for app_id in games:
+            info = tracker.games.get(app_id)
+            if info is not None and info.cards_before is not None:
+                cards_remaining[app_id] = info.cards_before
+        total_cards = sum(cards_remaining.values())
+
+        table = Table(
+            title="🎮 Steam Idle Bot — em idle agora",
+            box=ROUNDED,
+            title_style="bold cyan",
+            header_style="bold",
+            expand=False,
+        )
+        table.add_column("#", justify="right", style="dim", width=3)
+        table.add_column("App ID", justify="right", style="cyan")
+        table.add_column("Jogo", style="white", max_width=42, overflow="ellipsis")
+        table.add_column("Cartas restantes", justify="right", style="yellow")
+        table.add_column("Tempo idle", justify="right", style="green")
+
+        for index, app_id in enumerate(games, start=1):
+            info = tracker.games.get(app_id)
+            name = names.get(app_id) or (info.name if info and info.name else f"App {app_id}")
+            cards = str(cards_remaining[app_id]) if app_id in cards_remaining else "?"
+            minutes = info.idle_minutes if info else 0.0
+            table.add_row(str(index), str(app_id), name, cards, f"{minutes:.0f} min")
+
+        cards_label = str(total_cards) if cards_remaining else "desconhecido (badge API sem dados)"
+        summary = (
+            f"[bold]{len(games)}[/bold] jogos em idle  •  "
+            f"cartas restantes conhecidas: [bold]{cards_label}[/bold]  •  "
+            f"sessão: [bold]{tracker.session_minutes:.0f} min[/bold]"
+        )
+
+        console = Console()
+        console.print()
+        console.print(table)
+        console.print(summary)
+        console.print("[dim]Atualiza a cada 10 min • Ctrl+C para parar e ver o relatório[/dim]")
+        console.print()
+
     def _capture_initial_cards(self) -> None:
         """Capture the current number of cards remaining for each game."""
         try:
@@ -222,6 +299,15 @@ class SteamIdleBot:
                 # No badge service available, set from game_manager if it has data
                 if hasattr(self.game_manager, "_card_counts"):
                     for app_id, count in self.game_manager._card_counts.items():
+                        self._idle_tracker.set_cards_before(app_id, count)
+
+            # Fallback/augment: counts parsed by the scraper during filtering. This
+            # populates the panel/report when the badge API has no card data.
+            if hasattr(self.game_manager, "get_drop_counts"):
+                for app_id, count in self.game_manager.get_drop_counts().items():
+                    if self._idle_tracker._pending_cards_before.get(app_id) is None and (
+                        app_id not in self._idle_tracker.games or self._idle_tracker.games[app_id].cards_before is None
+                    ):
                         self._idle_tracker.set_cards_before(app_id, count)
         except Exception as e:
             self.logger.debug(f"Could not capture initial card counts: {e}")
@@ -240,6 +326,15 @@ class SteamIdleBot:
             else:
                 if hasattr(self.game_manager, "_card_counts"):
                     for app_id, count in self.game_manager._card_counts.items():
+                        self._idle_tracker.set_cards_after(app_id, count)
+
+            # Fallback/augment: re-scrape idled games to read current counts so the
+            # session report can show how many cards dropped while idling.
+            if self._games_to_idle and self._steam_id and hasattr(self.game_manager, "fetch_drop_counts"):
+                counts = self.game_manager.fetch_drop_counts(self._games_to_idle, self._steam_id)
+                for app_id, count in counts.items():
+                    game = self._idle_tracker.games.get(app_id)
+                    if game is None or game.cards_after is None:
                         self._idle_tracker.set_cards_after(app_id, count)
         except Exception as e:
             self.logger.debug(f"Could not capture final card counts: {e}")
@@ -319,6 +414,28 @@ class SteamIdleBot:
             return self._switch_to_steam_utility("python client login failure")
 
         return True
+
+    def _recover_session_via_browser(self, steam_id: str) -> bool:
+        """Rebuild the scraping session from cookies in a locally logged-in browser."""
+        try:
+            from .steam.browser_cookies import load_community_cookies
+
+            cookies = load_community_cookies(steam_id, self.settings.browser_cookies_browser)
+            if not cookies:
+                self.logger.warning(
+                    "Could not recover community cookies from a local browser. "
+                    "Card-drop filtering stays conservative (drained games excluded). "
+                    "Log into Steam in your browser, or set IDLING_BACKEND=python."
+                )
+                return False
+
+            session = SteamClientWrapper._build_web_session_from_cookies(cookies)
+            self.game_manager.set_web_session(session)
+            self.logger.info("Recovered authenticated steamcommunity session from local browser cookies")
+            return True
+        except Exception as err:  # noqa: BLE001 - recovery is best-effort
+            self.logger.debug(f"Browser cookie recovery failed: {err}")
+            return False
 
     def _configure_authenticated_web_session(self) -> None:
         """Configure the scraping layer with any authenticated web session available."""

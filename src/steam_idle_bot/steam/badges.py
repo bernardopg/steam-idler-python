@@ -94,7 +94,6 @@ class BadgeService:
             remaining = cards_remaining.get(app_id)
             if remaining is None:
                 unknown_status.append(app_id)
-                logger.debug("Badge API returned no card-drop data for game %s", app_id)
             elif remaining > 0:
                 confirmed_remaining.append(app_id)
             else:

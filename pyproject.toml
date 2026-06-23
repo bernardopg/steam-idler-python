@@ -20,6 +20,10 @@ dependencies = [
     "requests>=2.34",
     "rich>=15",
     "urllib3>=2.7",
+    # Recover community Steam cookies from a logged-in browser when configured
+    # cookies are store-only/expired. Import is guarded so its absence is
+    # non-fatal (e.g. headless CI without a browser/keyring).
+    "browser-cookie3>=0.20",
 ]
 
 [dependency-groups]

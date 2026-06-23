@@ -35,6 +35,12 @@ class GameManager:
         self.detailed_logger = DetailedLogger(settings)
         self._owned_games_cache: list[int] | None = None
         self._steam_utility_bridge: SteamUtilityBridge | None = None
+        self._game_names: dict[int, str] = {}
+
+    @property
+    def game_names(self) -> dict[int, str]:
+        """Map of known app_id -> game name (populated from the Steam Web API)."""
+        return self._game_names
 
     def get_owned_games(self, steam_id: str | None = None) -> list[int]:
         """
@@ -102,6 +108,10 @@ class GameManager:
 
             if "response" in data and "games" in data["response"]:
                 games = [game["appid"] for game in data["response"]["games"]]
+                for game in data["response"]["games"]:
+                    name = game.get("name")
+                    if name:
+                        self._game_names[int(game["appid"])] = str(name)
                 self._owned_games_cache = games
                 logger.info(f"Retrieved {len(games)} owned games via API")
                 return games
@@ -268,6 +278,8 @@ class GameManager:
         """Clear all caches."""
         self._owned_games_cache = None
         self.trading_card_detector.clear_cache()
+        if hasattr(self.card_drop_checker, "clear_cache"):
+            self.card_drop_checker.clear_cache()
         if self.badge_service:
             self.badge_service.clear_cache()
 
@@ -275,6 +287,28 @@ class GameManager:
         """Provide an authenticated Steam web session to the scraping layer."""
         if hasattr(self.card_drop_checker, "set_session"):
             self.card_drop_checker.set_session(session, authenticated_session=True)
+
+    def get_drop_counts(self) -> dict[int, int]:
+        """Cards-remaining counts gathered by the scraper during the last filtering pass."""
+        return dict(getattr(self.card_drop_checker, "drop_counts", {}))
+
+    def fetch_drop_counts(self, app_ids: list[int], steam_id: str | None) -> dict[int, int]:
+        """Re-scrape the given games to read their current cards-remaining counts."""
+        if not steam_id or not app_ids:
+            return {}
+        for app_id in app_ids:
+            try:
+                self.card_drop_checker.has_remaining_drops(app_id, steam_id)
+            except Exception as err:  # noqa: BLE001 - best-effort count refresh
+                logger.debug("Could not refresh drop count for %s: %s", app_id, err)
+        return self.get_drop_counts()
+
+    def verify_web_session(self, steam_id: str | None) -> bool:
+        """Probe whether the scraping session is genuinely logged in to steamcommunity."""
+        if not steam_id or not hasattr(self.card_drop_checker, "_ensure_session_verified"):
+            return False
+        self.card_drop_checker._ensure_session_verified(steam_id)
+        return bool(getattr(self.card_drop_checker, "has_authenticated_session", False))
 
     def resolve_active_steam_id(self) -> str | None:
         """Resolve the active Steam account via steam-utility when available."""

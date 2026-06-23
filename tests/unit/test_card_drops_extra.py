@@ -144,5 +144,6 @@ def test_has_remaining_drops_includes_ambiguous_authenticated_badge_pages():
             authenticated_session=True,
         )
     checker.detailed_logger.log_scraping_result = Mock()
+    checker._auth_verified = True  # skip the live session probe in this unit test
 
-    assert checker.has_remaining_drops(10, "omg_bitter") is True
+    assert checker.has_remaining_drops(10, "test_vanity") is True
