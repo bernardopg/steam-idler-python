@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -46,7 +47,7 @@ class CardDropChecker:
         # skip re-scraping it on subsequent runs. Keyed by Steam ID.
         # Structure: {steam_id: {app_id: {"ts": float, "trusted": bool}}}
         self.cache_enabled = getattr(settings, "enable_card_cache", True)
-        self.cache_path = getattr(settings, "drop_cache_path", ".cache/no_drop_cards.json")
+        self.cache_path = Path(getattr(settings, "drop_cache_path", ".cache/no_drop_cards.json"))
         self.cache_ttl_days = getattr(settings, "drop_cache_ttl_days", 90)
         self._no_drop_cache: dict[str, dict[int, dict[str, Any]]] = {}
         self._no_drop_dirty = False
@@ -510,7 +511,7 @@ class CardDropChecker:
 
     def _load_no_drop_cache(self) -> None:
         try:
-            if not os.path.exists(self.cache_path):
+            if not self.cache_path.exists():
                 return
             with open(self.cache_path, encoding="utf-8") as f:
                 raw = json.load(f)
@@ -540,7 +541,7 @@ class CardDropChecker:
         if not self.cache_enabled or not self._no_drop_dirty:
             return
         try:
-            os.makedirs(os.path.dirname(self.cache_path) or ".", exist_ok=True)
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             out: dict[str, dict[str, dict[str, Any]]] = {}
             for steam_key, games in self._no_drop_cache.items():
                 out[steam_key] = {str(app_id): meta for app_id, meta in games.items()}

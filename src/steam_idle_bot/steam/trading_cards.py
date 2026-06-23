@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -40,7 +41,7 @@ class TradingCardDetector:
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay
         self.cache_enabled = cache_enabled
-        self.cache_path = cache_path
+        self.cache_path = Path(cache_path)
         self.cache_ttl_days = cache_ttl_days
 
         # HTTP interface: default to requests module for test compatibility
@@ -240,7 +241,7 @@ class TradingCardDetector:
 
     def _load_cache(self) -> None:
         try:
-            if not os.path.exists(self.cache_path):
+            if not self.cache_path.exists():
                 return
             with open(self.cache_path, encoding="utf-8") as f:
                 raw = json.load(f)
@@ -261,7 +262,7 @@ class TradingCardDetector:
 
     def _save_cache(self) -> None:
         try:
-            os.makedirs(os.path.dirname(self.cache_path) or ".", exist_ok=True)
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             out: dict[str, dict[str, Any]] = {}
             for app_id, (has_cards, ts) in self._cache_data.items():
                 out[str(app_id)] = {"has_cards": has_cards, "ts": ts}

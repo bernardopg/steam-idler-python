@@ -4,8 +4,8 @@ __all__ = ["DetailedLogger"]
 
 import json
 import logging
-import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from ..config.settings import Settings
@@ -16,17 +16,17 @@ class DetailedLogger:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.log_dir = "logs"
+        self.log_dir = Path("logs")
         self._ensure_log_dir()
 
     def _ensure_log_dir(self) -> None:
         """Ensure the logs directory exists."""
-        os.makedirs(self.log_dir, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_log_filename(self) -> str:
+    def _get_log_filename(self) -> Path:
         """Get the log filename with timestamp."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return os.path.join(self.log_dir, f"game_filtering_{timestamp}.json")
+        return self.log_dir / f"game_filtering_{timestamp}.json"
 
     def log_filtering_process(
         self,
@@ -87,10 +87,10 @@ class DetailedLogger:
             "content_preview": content_preview[:200] + "..." if content_preview else "",
         }
 
-        filename = os.path.join(self.log_dir, "scraping_results.json")
+        filename = self.log_dir / "scraping_results.json"
 
         # Append to existing file or create new one
-        if os.path.exists(filename):
+        if filename.exists():
             with open(filename, encoding="utf-8") as f:
                 try:
                     existing_data = json.load(f)
@@ -119,10 +119,10 @@ class DetailedLogger:
             "results": results,
         }
 
-        filename = os.path.join(self.log_dir, f"{api_name}_results.json")
+        filename = self.log_dir / f"{api_name}_results.json"
 
         # Append to existing file or create new one
-        if os.path.exists(filename):
+        if filename.exists():
             with open(filename, encoding="utf-8") as f:
                 try:
                     existing_data = json.load(f)
