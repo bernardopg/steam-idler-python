@@ -14,6 +14,12 @@ dependencies = [
     # Installing standalone `eventemitter` overwrites that module with an
     # incompatible one (`'SteamClient' object has no attribute '_listeners'`).
     "steam[client]>=1.4.4,<1.5.0",
+    # protobuf is pinned <4 by steam[client]==1.4.4 itself (it declares
+    # protobuf>=3.0,<4), so Dependabot advisories GHSA-8qvm-5x2c-j2w7 and
+    # GHSA-7gcm-g887-7qv7 (patched only in protobuf 4.25.8 / 5.29.6) are not
+    # actionable here and are dismissed as tolerable_risk: the bot only
+    # deserializes protobuf/JSON from authenticated Steam servers over TLS, so
+    # the DoS vectors require untrusted input that never reaches it.
     "protobuf>=3.20,<4",
     "pydantic>=2.13",
     "pydantic-settings>=2.14",
