@@ -15,4 +15,4 @@ venv/
 .coverage
 coverage.xml
 logs/
-*.log
+*.log*.egg-info/
