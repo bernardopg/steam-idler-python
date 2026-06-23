@@ -15,6 +15,16 @@ mkdir -p "$RUNS_DIR"
 RUN_LOG="$RUNS_DIR/run_$(date -u +"%Y%m%d_%H%M%SZ").log"
 echo "Saving run output to: $RUN_LOG"
 
-# Activate UV-managed environment and run the package entry.
-uv run python -m steam_idle_bot "$@" 2>&1 | tee "$RUN_LOG"
-exit ${PIPESTATUS[0]}
+# Activate UV-managed environment and run the package entry. Keep Python out of
+# a pipeline so Ctrl+C reaches the bot and lets it stop native idling children.
+FIFO="$(mktemp -u)"
+mkfifo "$FIFO"
+tee "$RUN_LOG" < "$FIFO" &
+TEE_PID=$!
+trap 'rm -f "$FIFO"; kill "$TEE_PID" 2>/dev/null || true' EXIT
+
+uv run python -m steam_idle_bot "$@" > "$FIFO" 2>&1
+STATUS=$?
+
+wait "$TEE_PID" 2>/dev/null || true
+exit "$STATUS"
