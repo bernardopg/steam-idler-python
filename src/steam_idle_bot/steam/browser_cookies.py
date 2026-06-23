@@ -1,5 +1,7 @@
 """Load authenticated steamcommunity cookies from a locally logged-in browser.
 
+__all__ = ["is_community_token", "load_community_cookies"]
+
 The bot's card-drop scraping needs a `steamLoginSecure` cookie whose JWT audience
 is `web:community`. Browser-exported "store" cookies (`web:store`) silently fail on
 community pages. When the configured session is not authenticated, we can recover a

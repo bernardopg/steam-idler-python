@@ -1,5 +1,7 @@
 """Structured logging configuration with rich formatting and file output."""
 
+__all__ = ["SteamIdleLogger", "setup_logging"]
+
 import logging
 
 from rich.console import Console

@@ -1,5 +1,18 @@
 """Custom exceptions for Steam Idle Bot."""
 
+__all__ = [
+    "SteamIdleBotError",
+    "ConfigurationError",
+    "SteamAuthenticationError",
+    "SteamConnectionError",
+    "SteamAPITimeoutError",
+    "TradingCardDetectionError",
+    "GameLibraryError",
+    "RateLimitError",
+    "BadgeServiceError",
+    "CardDropCheckError",
+]
+
 
 class SteamIdleBotError(Exception):
     """Base exception for all Steam Idle Bot errors."""

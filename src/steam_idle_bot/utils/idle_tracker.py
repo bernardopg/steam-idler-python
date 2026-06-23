@@ -1,5 +1,7 @@
 """Tracks idling session statistics: time per game and card drops."""
 
+__all__ = ["GameIdleInfo", "IdleTracker"]
+
 from __future__ import annotations
 
 import logging

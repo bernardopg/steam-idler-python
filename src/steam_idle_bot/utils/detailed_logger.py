@@ -1,5 +1,7 @@
 """Detailed logging for game filtering process."""
 
+__all__ = ["DetailedLogger"]
+
 import json
 import logging
 import os

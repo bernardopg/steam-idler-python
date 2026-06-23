@@ -1,5 +1,7 @@
 """Trading card detection and management."""
 
+__all__ = ["TradingCardDetector"]
+
 import json
 import logging
 import os
