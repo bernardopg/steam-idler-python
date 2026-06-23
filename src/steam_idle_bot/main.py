@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -48,7 +49,7 @@ class SteamIdleBot:
         self._idle_tracker = IdleTracker()
         self._games_to_idle: list[int] = []
         self._steam_id: str | None = None
-        self._running = False
+        self._stop_event = threading.Event()
         self._last_report = ""
         self.report_callback: Callable[[str], None] | None = None
 
@@ -132,7 +133,7 @@ class SteamIdleBot:
                 return
             steam_id = self._resolve_active_steam_id()
 
-        self._running = True
+        self._stop_event.clear()
         self._print_status_panel(games)
         self._main_loop(games, steam_id=steam_id)
 
@@ -147,10 +148,10 @@ class SteamIdleBot:
         reconnect_cooldown_seconds = 10
         next_reconnect_attempt = 0.0
 
-        while self._running:
+        while not self._stop_event.is_set():
             try:
                 self.client.sleep(loop_sleep_seconds)  # Keep the loop responsive for GUI stop.
-                if not self._running:
+                if self._stop_event.is_set():
                     break
 
                 # Refresh games every 10 minutes
@@ -214,11 +215,11 @@ class SteamIdleBot:
 
     def stop(self) -> None:
         """Request the bot to stop at the next loop iteration."""
-        if not self._running:
+        if self._stop_event.is_set():
             return
 
         self.logger.info("Stop requested")
-        self._running = False
+        self._stop_event.set()
         with contextlib.suppress(Exception):
             self.client.stop_idling()
 
@@ -366,7 +367,7 @@ class SteamIdleBot:
             self.client.stop_idling()
             self.client.logout()
 
-        self._running = False
+        self._stop_event.set()
         self.logger.info("Steam Idle Bot stopped")
 
     def _get_authenticated_web_session(self):
