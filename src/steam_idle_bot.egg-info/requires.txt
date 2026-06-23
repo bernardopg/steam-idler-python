@@ -1,8 +1,0 @@
-steam[client]<1.5.0,>=1.4.4
-protobuf<4,>=3.20
-pydantic>=2.13
-pydantic-settings>=2.14
-requests>=2.34
-rich>=15
-urllib3>=2.7
-browser-cookie3>=0.20
