@@ -291,6 +291,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         env_ignore_empty=True,
+        extra="ignore",
         validate_default=True,
         populate_by_name=True,
     )
