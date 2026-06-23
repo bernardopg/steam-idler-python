@@ -1,7 +1,5 @@
 """Load authenticated steamcommunity cookies from a locally logged-in browser.
 
-__all__ = ["is_community_token", "load_community_cookies"]
-
 The bot's card-drop scraping needs a `steamLoginSecure` cookie whose JWT audience
 is `web:community`. Browser-exported "store" cookies (`web:store`) silently fail on
 community pages. When the configured session is not authenticated, we can recover a
@@ -10,6 +8,8 @@ self-healing as those short-lived community tokens rotate.
 """
 
 from __future__ import annotations
+
+__all__ = ["is_community_token", "load_community_cookies"]
 
 import base64
 import binascii

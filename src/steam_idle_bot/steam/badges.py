@@ -1,8 +1,8 @@
 """Helpers for querying Steam badge progress and card drop availability."""
 
-__all__ = ["BadgeService"]
-
 from __future__ import annotations
+
+__all__ = ["BadgeService"]
 
 import logging
 from collections.abc import Iterable

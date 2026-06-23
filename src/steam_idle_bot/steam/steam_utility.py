@@ -1,8 +1,8 @@
 """Optional native idling backend powered by the local steam-utility project."""
 
-__all__ = ["SteamUtilityError", "SteamUtilityBridge", "SteamUtilityIdleClient"]
-
 from __future__ import annotations
+
+__all__ = ["SteamUtilityError", "SteamUtilityBridge", "SteamUtilityIdleClient"]
 
 import json
 import logging
