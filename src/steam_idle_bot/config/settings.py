@@ -203,10 +203,10 @@ class Settings(BaseSettings):
     # Performance
     api_timeout: int = Field(default=10, ge=1, le=60, description="Timeout for API requests in seconds")
     rate_limit_delay: float = Field(
-        default=0.5,
+        default=1.0,
         ge=0.1,
         le=5.0,
-        description="Delay between API calls to respect rate limits",
+        description="Base delay between API calls; auto-increases when Steam returns 429",
     )
 
     # Trading-card cache

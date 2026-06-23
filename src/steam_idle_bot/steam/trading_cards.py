@@ -11,7 +11,11 @@ from requests import Session
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from ..utils.exceptions import SteamAPITimeoutError, TradingCardDetectionError
+from ..utils.exceptions import (
+    RateLimitError,
+    SteamAPITimeoutError,
+    TradingCardDetectionError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,15 @@ class TradingCardDetector:
 
         except (requests.exceptions.Timeout, TimeoutError) as err:
             raise SteamAPITimeoutError(f"Timeout checking trading cards for app {app_id}") from err
+        except requests.exceptions.RetryError as err:
+            # Raised once the session's retry budget is exhausted, typically after
+            # repeated 429s from the Steam store API.
+            raise RateLimitError(f"Steam rate limit (429) checking trading cards for app {app_id}") from err
+        except requests.exceptions.HTTPError as err:
+            status = getattr(getattr(err, "response", None), "status_code", None)
+            if status == 429:
+                raise RateLimitError(f"Steam rate limit (429) checking trading cards for app {app_id}") from err
+            raise TradingCardDetectionError(f"Network error checking trading cards for app {app_id}: {err}") from err
         except requests.exceptions.RequestException as err:
             raise TradingCardDetectionError(f"Network error checking trading cards for app {app_id}: {err}") from err
         except Exception as err:  # noqa: BLE001 - broad for resilience
@@ -119,6 +132,15 @@ class TradingCardDetector:
         """
         filtered_games = []
 
+        # Adaptive throttle: start at the configured delay, widen it when Steam
+        # returns 429s, and relax it again after a streak of clean lookups. This
+        # keeps periodic refreshes fast while surviving large libraries that would
+        # otherwise exhaust the store API's rate limit.
+        base_delay = max(self.rate_limit_delay, 0.0)
+        current_delay = base_delay
+        max_delay = max(base_delay * 16, 8.0)
+        consecutive_ok = 0
+
         checks = 0
         for _i, game_id in enumerate(game_ids):
             try:
@@ -131,13 +153,32 @@ class TradingCardDetector:
                 # Only rate limit actual network lookups. Cached results should be
                 # effectively free so periodic refreshes stay fast.
                 if not was_cached:
-                    time.sleep(self.rate_limit_delay)
+                    time.sleep(current_delay)
                     checks += 1
+                    consecutive_ok += 1
+                    if consecutive_ok >= 10 and current_delay > base_delay:
+                        current_delay = max(base_delay, current_delay / 2)
+                        consecutive_ok = 0
                 if max_checks is not None and checks >= max_checks:
                     break
 
             except KeyboardInterrupt:
                 break
+            except RateLimitError:
+                # Steam is throttling. Widen the gap between checks and cool down
+                # before moving on so subsequent lookups can recover.
+                consecutive_ok = 0
+                current_delay = min(max(current_delay * 2, base_delay, 1.0), max_delay)
+                checks += 1
+                logger.warning(
+                    "Steam rate limit hit on app %s; backing off to %.1fs between checks",
+                    game_id,
+                    current_delay,
+                )
+                time.sleep(current_delay)
+                if max_checks is not None and checks >= max_checks:
+                    break
+                continue
             except TradingCardDetectionError as e:
                 # Store API often returns unsuccessful for DLC/retired apps.
                 # Treat as no-cards and keep noise low.
@@ -173,14 +214,17 @@ class TradingCardDetector:
 
     @staticmethod
     def build_session() -> Session:
-        """Build a requests session with retries/backoff."""
+        """Build a requests session with resilient retries/backoff for Steam rate limits."""
         session = requests.Session()
         retry = Retry(
-            total=3,
-            backoff_factor=0.5,
+            total=5,
+            backoff_factor=2.0,  # 2s, 4s, 8s, 16s, 32s (capped) between retries
             status_forcelist=(429, 500, 502, 503, 504),
             allowed_methods=frozenset({"GET"}),
+            respect_retry_after_header=True,  # honor Steam's Retry-After header
         )
+        # Cap a single request's per-retry backoff so we never block for minutes.
+        retry.backoff_max = 30.0
         adapter = HTTPAdapter(max_retries=retry)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
