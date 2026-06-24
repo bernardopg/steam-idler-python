@@ -22,6 +22,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - UX: card-drop counts parsed from badge pages so the panel and session report show real
   numbers even when the badge API has no `cards_remaining`.
 - CLI: `--config PATH` to load a custom configuration file.
+- CLI/config: `--refresh-interval-seconds` flag and `REFRESH_INTERVAL_SECONDS` setting
+  (default 600, min 10) to tune how often the selection pipeline re-runs while idling —
+  previously hard-coded to 10 minutes.
 - README: language toggle badges (English / Português-BR).
 
 ### Changed
@@ -37,6 +40,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 - Card-drop filtering no longer idles fully-farmed games (or misses games with real drops)
   when the web session is not genuinely authenticated against `steamcommunity.com`.
+- Terminal status panel now shows a **live, growing idle/session duration** instead of a
+  frozen `0 min`: `IdleTracker` durations fall back to the current time while a session is
+  still running (`end_time` not yet set).
+- Logging: switched the file handler to a **rotating** one (10 MB × 3 backups) so a
+  long-running idle session can no longer grow a single log file without bound.
+- Trading-card detection tolerates malformed Steam `appdetails` payloads (e.g. app
+  `2321720` returning a list where a dict is expected) instead of treating them as errors.
 
 ### Security
 

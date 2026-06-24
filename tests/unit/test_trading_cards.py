@@ -82,6 +82,29 @@ class TestTradingCardDetector:
         assert detector._cache[123] is False
 
     @patch("steam_idle_bot.steam.trading_cards.requests.get")
+    def test_has_trading_cards_tolerates_malformed_entry(self, mock_get):
+        """Some apps (e.g. 2321720) return a list where a dict is expected."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"2321720": ["unexpected", "list"]}
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        detector = TradingCardDetector()
+        assert detector.has_trading_cards(2321720) is False
+        assert detector._cache[2321720] is False
+
+    @patch("steam_idle_bot.steam.trading_cards.requests.get")
+    def test_has_trading_cards_tolerates_non_dict_data(self, mock_get):
+        """A successful entry whose 'data' is a list must not raise."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"123": {"success": True, "data": []}}
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        detector = TradingCardDetector()
+        assert detector.has_trading_cards(123) is False
+
+    @patch("steam_idle_bot.steam.trading_cards.requests.get")
     def test_has_trading_cards_timeout(self, mock_get):
         """Test timeout handling."""
         mock_get.side_effect = TimeoutError()

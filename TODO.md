@@ -2,10 +2,6 @@
 
 ## High Priority
 
-- Add a first-class `--refresh-interval-seconds` CLI flag and matching setting so
-  real idle verification can run at 5-minute intervals without external scripts.
-- Fix terminal idle duration display; the panel currently reports `0 min` after
-  10+ minutes of real idling.
 - Make shutdown produce a final report reliably when stopping from `run.sh` with
   Ctrl+C, not only cleanup subprocesses.
 - Add steam-utility process reconciliation: detect existing idles for target App
@@ -14,8 +10,6 @@
 
 ## Card-Drop Accuracy
 
-- Harden Steam Store `appdetails` parsing for unexpected payloads such as app
-  `2321720`, where the current parser can receive a list instead of a dict.
 - Add a structured checkpoint report mode, for example
   `--checkpoint-minutes 5 --duration-minutes 25`, writing JSON/Markdown with
   selected games, card counts, drops, refreshes, and cleanup status.

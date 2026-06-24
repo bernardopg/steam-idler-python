@@ -5,6 +5,7 @@ from __future__ import annotations
 __all__ = ["GameIdleInfo", "IdleTracker"]
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -37,10 +38,16 @@ class GameIdleInfo:
 
     @property
     def idle_seconds(self) -> float:
-        """Total seconds spent idling this game."""
-        if self.start_time is None or self.end_time is None:
+        """Total seconds spent idling this game.
+
+        While the session is live (``end_time`` not yet set) this reports the
+        elapsed time up to now, so terminal panels show a growing duration
+        instead of a frozen ``0``.
+        """
+        if self.start_time is None:
             return 0.0
-        return max(0.0, self.end_time - self.start_time)
+        end = self.end_time if self.end_time is not None else time.time()
+        return max(0.0, end - self.start_time)
 
     @property
     def idle_minutes(self) -> float:
@@ -62,8 +69,6 @@ class IdleTracker:
 
     def start_session(self, game_ids: list[int], game_names: dict[int, str] | None = None) -> None:
         """Record the start of an idling session."""
-        import time
-
         self.session_start = time.time()
         if game_names:
             self.game_names.update(game_names)
@@ -82,8 +87,6 @@ class IdleTracker:
 
     def end_session(self) -> None:
         """Record the end of an idling session."""
-        import time
-
         self.session_end = time.time()
         for game in self.games.values():
             game.end_time = self.session_end
@@ -109,10 +112,15 @@ class IdleTracker:
 
     @property
     def session_seconds(self) -> float:
-        """Total session duration in seconds."""
-        if self.session_start is None or self.session_end is None:
+        """Total session duration in seconds.
+
+        Falls back to the current time while the session is still running so the
+        live status panel reflects real elapsed time instead of ``0``.
+        """
+        if self.session_start is None:
             return 0.0
-        return max(0.0, self.session_end - self.session_start)
+        end = self.session_end if self.session_end is not None else time.time()
+        return max(0.0, end - self.session_start)
 
     @property
     def session_minutes(self) -> float:
