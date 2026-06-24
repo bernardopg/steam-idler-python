@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="700" viewBox="0 0 1120 700" role="img" aria-label="Steam Idle Bot architecture">
+  <defs>
+    <style>
+      .lbl{font-family:Segoe UI,Helvetica,Arial,sans-serif;}
+      .t{fill:#ffffff;font-weight:700;}
+      .s{fill:#c7d5e0;font-weight:500;}
+      .h{fill:#8aa0b2;font-weight:600;letter-spacing:1px;}
+    </style>
+    <marker id="arw" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0 0 L8 3 L0 6 z" fill="#66c0f4"/>
+    </marker>
+    <marker id="arwg" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0 0 L8 3 L0 6 z" fill="#a3cf06"/>
+    </marker>
+  </defs>
+
+  <rect width="1120" height="700" rx="16" fill="#0f1216"/>
+  <rect x="0" y="0" width="1120" height="5" fill="#66c0f4"/>
+  <text x="40" y="46" class="lbl t" font-size="26">Architecture</text>
+  <text x="40" y="70" class="lbl s" font-size="15">Entry → configuration → orchestrator → swappable backend + three card services → tracking</text>
+
+  <!-- Entry / Config -->
+  <g class="lbl">
+    <rect x="40" y="96" width="300" height="92" rx="12" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="58" y="124" class="h" font-size="12">ENTRY</text>
+    <text x="58" y="150" class="t" font-size="17">__main__ → main.main()</text>
+    <text x="58" y="174" class="s" font-size="13">parse args · choose CLI or GUI</text>
+
+    <rect x="372" y="96" width="300" height="92" rx="12" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="390" y="124" class="h" font-size="12">CONFIG</text>
+    <text x="390" y="150" class="t" font-size="17">Settings (Pydantic v2)</text>
+    <text x="390" y="174" class="s" font-size="13">env · .env · legacy config.py</text>
+
+    <rect x="704" y="96" width="376" height="92" rx="12" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="722" y="124" class="h" font-size="12">PRESENTATION</text>
+    <text x="722" y="150" class="t" font-size="17">Terminal panel · Tkinter GUI</text>
+    <text x="722" y="174" class="s" font-size="13">live status · session report · checkpoints</text>
+  </g>
+
+  <!-- Orchestrator -->
+  <g class="lbl">
+    <rect x="300" y="232" width="520" height="84" rx="12" fill="#16324a" stroke="#66c0f4" stroke-width="2"/>
+    <text x="560" y="262" text-anchor="middle" class="t" font-size="20">SteamIdleBot — orchestrator</text>
+    <text x="560" y="290" text-anchor="middle" class="s" font-size="13">run() → selection pipeline · refresh loop · reconnect · graceful stop</text>
+  </g>
+
+  <!-- Backends column -->
+  <g class="lbl">
+    <rect x="40" y="372" width="300" height="232" rx="12" fill="#15191f" stroke="#a3cf06"/>
+    <text x="58" y="400" class="h" font-size="12">IDLING BACKENDS (swappable)</text>
+
+    <rect x="60" y="416" width="260" height="76" rx="10" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="76" y="444" class="t" font-size="16">SteamClientWrapper</text>
+    <text x="76" y="466" class="s" font-size="12.5">python · steam lib · Guard/2FA</text>
+    <text x="76" y="484" class="s" font-size="12.5">builds authenticated web session</text>
+
+    <rect x="60" y="504" width="260" height="76" rx="10" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="76" y="532" class="t" font-size="16">SteamUtilityIdleClient</text>
+    <text x="76" y="554" class="s" font-size="12.5">steam_utility · subprocess bridge</text>
+    <text x="76" y="572" class="s" font-size="12.5">/proc idle reconciliation</text>
+
+    <path d="M190 492 L190 504" stroke="#a3cf06" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arwg)"/>
+    <text x="200" y="501" class="s" font-size="11">fallback</text>
+  </g>
+
+  <!-- Services column -->
+  <g class="lbl">
+    <rect x="372" y="372" width="708" height="232" rx="12" fill="#15191f" stroke="#66c0f4"/>
+    <text x="390" y="400" class="h" font-size="12">CARD SERVICES (degrade gracefully)</text>
+
+    <rect x="392" y="416" width="216" height="164" rx="10" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="500" y="446" text-anchor="middle" class="t" font-size="15">TradingCardDetector</text>
+    <text x="500" y="470" text-anchor="middle" class="s" font-size="12">does the game</text>
+    <text x="500" y="488" text-anchor="middle" class="s" font-size="12">have cards?</text>
+    <text x="500" y="516" text-anchor="middle" class="s" font-size="11.5">store scrape + JSON cache</text>
+
+    <rect x="624" y="416" width="216" height="164" rx="10" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="732" y="446" text-anchor="middle" class="t" font-size="15">BadgeService</text>
+    <text x="732" y="470" text-anchor="middle" class="s" font-size="12">cards-remaining</text>
+    <text x="732" y="488" text-anchor="middle" class="s" font-size="12">via Web API</text>
+    <text x="732" y="516" text-anchor="middle" class="s" font-size="11.5">needs STEAM_API_KEY</text>
+
+    <rect x="856" y="416" width="204" height="164" rx="10" fill="#1b2838" stroke="#3a6a8a"/>
+    <text x="958" y="446" text-anchor="middle" class="t" font-size="15">CardDropChecker</text>
+    <text x="958" y="470" text-anchor="middle" class="s" font-size="12">drops remaining</text>
+    <text x="958" y="488" text-anchor="middle" class="s" font-size="12">via scraping</text>
+    <text x="958" y="516" text-anchor="middle" class="s" font-size="11.5">no-drop cache · session verify</text>
+  </g>
+
+  <!-- Tracking -->
+  <g class="lbl">
+    <rect x="372" y="632" width="708" height="48" rx="10" fill="#16324a" stroke="#66c0f4"/>
+    <text x="726" y="662" text-anchor="middle" class="t" font-size="15">IdleTracker — before/after snapshots · drops · session report &amp; JSON checkpoints</text>
+  </g>
+
+  <!-- arrows -->
+  <g fill="none" stroke="#66c0f4" stroke-width="2">
+    <path d="M190 188 L190 232 L300 232" marker-end="url(#arw)"/>
+    <path d="M522 188 L522 232" marker-end="url(#arw)"/>
+    <path d="M820 254 L892 254 L892 188" marker-end="url(#arw)"/>
+    <path d="M360 316 L190 316 L190 372" marker-end="url(#arw)"/>
+    <path d="M620 316 L726 316 L726 372" marker-end="url(#arw)"/>
+    <path d="M726 604 L726 632" marker-end="url(#arw)"/>
+  </g>
+</svg>

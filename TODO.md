@@ -1,6 +1,6 @@
 # TODO
 
-All previously tracked items are done. See `CHANGELOG.md` for the delivered work
-and `CLAUDE.md` (Badge API behavior) for the documented card-drop data caveat.
+The full, prioritized backlog — epics, user stories, impact/effort, sprints and known
+risks — now lives in **[BACKLOG.md](BACKLOG.md)**.
 
-_No open items._
+Delivered work is recorded in [`CHANGELOG.md`](CHANGELOG.md).
