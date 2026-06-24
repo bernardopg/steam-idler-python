@@ -8,6 +8,15 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
+- CLI/config: **checkpoint report mode** — `--checkpoint-minutes N` (`CHECKPOINT_MINUTES`)
+  writes a structured JSON + Markdown snapshot of the live session (selected games, card
+  counts, drops, durations, totals) to `logs/checkpoints/` every N minutes; `--duration-minutes`
+  (`DURATION_MINUTES`) stops idling after a fixed run length. New `IdleTracker.to_dict()`.
+- CLI/config: **delayed post-run verification** — `--post-run-verify-seconds N`
+  (`POST_RUN_VERIFY_SECONDS`) re-scrapes card counts N seconds after stopping, because Steam
+  badge pages can lag behind the actual drops at the moment idling ends.
+- CLI: **`--stop-app-ids`** maintenance mode — stop running steam-utility idles for the given
+  App IDs (JSON or CSV) and exit, without starting the bot.
 - Preflight: advisory **environment checks** for the `steam_utility` backend — warn when no
   local Steam client is running, and additionally when no graphical session
   (`DISPLAY`/`WAYLAND_DISPLAY`) is available to launch it. Never aborts; skipped for the
