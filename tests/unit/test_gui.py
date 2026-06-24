@@ -34,11 +34,7 @@ from steam_idle_bot.gui import (
 
 def _has_display() -> bool:
     """Check whether a display server is available for tkinter."""
-    if os.environ.get("DISPLAY"):
-        return True
-    if os.environ.get("WAYLAND_DISPLAY"):
-        return True
-    return False
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 @pytest.fixture()

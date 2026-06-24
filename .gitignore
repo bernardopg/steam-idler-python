@@ -4,6 +4,7 @@ config.py
 __pycache__/
 venv/
 .vscode/
+.claude/
 .venv/
 .mypy_cache/
 .serena/
@@ -16,4 +17,5 @@ venv/
 coverage.xml
 logs/
 *.log
+*.log.*
 *.egg-info/
