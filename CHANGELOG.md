@@ -47,6 +47,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   long-running idle session can no longer grow a single log file without bound.
 - Trading-card detection tolerates malformed Steam `appdetails` payloads (e.g. app
   `2321720` returning a list where a dict is expected) instead of treating them as errors.
+- Shutdown: `SIGINT`/`SIGTERM` now trigger a **graceful stop** that still emits the session
+  report and runs cleanup. Previously `SIGTERM` (e.g. when `run.sh` is terminated) killed the
+  process before the `finally` report could run.
 
 ### Security
 

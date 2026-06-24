@@ -2,8 +2,6 @@
 
 ## High Priority
 
-- Make shutdown produce a final report reliably when stopping from `run.sh` with
-  Ctrl+C, not only cleanup subprocesses.
 - Add steam-utility process reconciliation: detect existing idles for target App
   IDs before starting, deduplicate them, and report whether they are reused,
   stopped, or left untouched.
