@@ -21,7 +21,5 @@
 ## Operational Hygiene
 
 - Add a command or CLI flag to stop only bot-owned steam-utility idles by App ID.
-- Add a preflight warning when Steam is not running or when the shell lacks the
-  graphical session variables needed to start Steam.
 - Add integration tests around `run.sh` signal handling and orphan subprocess
   prevention.

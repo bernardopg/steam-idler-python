@@ -8,6 +8,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
+- Preflight: advisory **environment checks** for the `steam_utility` backend — warn when no
+  local Steam client is running, and additionally when no graphical session
+  (`DISPLAY`/`WAYLAND_DISPLAY`) is available to launch it. Never aborts; skipped for the
+  `python` backend and on platforms without `/proc`.
 - Drops: persistent **no-drop cache** (`.cache/no_drop_cards.json`, per account) — games
   confirmed without remaining drops are skipped on later runs, so each run scans less.
   New settings `DROP_CACHE_PATH` / `DROP_CACHE_TTL_DAYS`.

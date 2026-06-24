@@ -17,6 +17,7 @@ from .steam.steam_utility import SteamUtilityIdleClient
 from .steam.trading_cards import TradingCardDetector
 from .utils.idle_tracker import IdleTracker
 from .utils.logger import setup_logging
+from .utils.preflight import preflight_warnings
 
 
 class SteamIdleBot:
@@ -91,6 +92,9 @@ class SteamIdleBot:
     def _run_normal_mode(self) -> None:
         """Run in normal mode with Steam connection."""
         self.logger.info("Starting Steam Idle Bot...")
+
+        for warning in preflight_warnings(self.settings.idling_backend):
+            self.logger.warning(warning)
 
         if not self._ensure_client_ready():
             sys.exit(1)
