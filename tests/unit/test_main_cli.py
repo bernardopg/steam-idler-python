@@ -18,16 +18,16 @@ class DummyLogger:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
 
-    def info(self, msg):
+    def info(self, msg, *args):
         self.messages.append(("info", str(msg)))
 
-    def error(self, msg):
+    def error(self, msg, *args):
         self.messages.append(("error", str(msg)))
 
-    def warning(self, msg):
+    def warning(self, msg, *args):
         self.messages.append(("warning", str(msg)))
 
-    def debug(self, msg):
+    def debug(self, msg, *args):
         self.messages.append(("debug", str(msg)))
 
 
@@ -259,6 +259,59 @@ def test_main_loop_keyboard_interrupt_stops(monkeypatch):
     bot._stop_event.clear()
     bot.client.sleep = lambda seconds: (_ for _ in ()).throw(KeyboardInterrupt())
     bot._main_loop([1])
+
+
+def test_signal_stop_sets_event_without_network_teardown():
+    """signal_stop must only flip the event; cleanup happens later in run()."""
+    bot = _build_bot()
+    bot._stop_event.clear()
+    bot.client.stopped = False
+
+    def _fail_stop():
+        bot.client.stopped = True
+        raise AssertionError("stop_idling must not run inside the signal path")
+
+    bot.client.stop_idling = _fail_stop
+
+    bot.signal_stop(15)
+
+    assert bot._stop_event.is_set()
+    assert bot.client.stopped is False
+
+
+def test_install_signal_handlers_routes_to_signal_stop(monkeypatch):
+    import signal as signal_module
+
+    bot = _build_bot()
+    bot._stop_event.clear()
+
+    registered = {}
+    monkeypatch.setattr(
+        main_module.signal,
+        "signal",
+        lambda sig, handler: registered.__setitem__(sig, handler),
+    )
+
+    main_module._install_signal_handlers(bot)
+
+    assert signal_module.SIGINT in registered
+    assert signal_module.SIGTERM in registered
+
+    # Invoking a registered handler must gracefully stop the bot.
+    registered[signal_module.SIGTERM](signal_module.SIGTERM, None)
+    assert bot._stop_event.is_set()
+
+
+def test_install_signal_handlers_suppresses_non_main_thread(monkeypatch):
+    bot = _build_bot()
+
+    def _raise(sig, handler):
+        raise ValueError("signal only works in main thread")
+
+    monkeypatch.setattr(main_module.signal, "signal", _raise)
+
+    # Must not propagate when handlers cannot be installed (e.g. worker thread).
+    main_module._install_signal_handlers(bot)
 
 
 def test_capture_cards_paths():

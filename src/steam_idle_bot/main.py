@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import signal
 import sys
 import threading
 import time
@@ -222,6 +223,19 @@ class SteamIdleBot:
         self._stop_event.set()
         with contextlib.suppress(Exception):
             self.client.stop_idling()
+
+    def signal_stop(self, signum: int | None = None) -> None:
+        """Signal-handler-safe stop.
+
+        Only sets the stop event so the main loop unwinds normally and the
+        ``finally`` in :meth:`run` still emits the session report and runs
+        cleanup. Network teardown (``stop_idling``/``logout``) is deferred to
+        that cleanup instead of running inside the async signal handler.
+        Critically, this lets ``SIGTERM`` (which Python does *not* turn into a
+        ``KeyboardInterrupt``) shut the bot down gracefully — e.g. when
+        ``run.sh`` is terminated — rather than killing it before the report.
+        """
+        self._stop_event.set()
 
     def _game_name_map(self) -> dict[int, str]:
         """Best-effort map of app_id -> name from the game manager."""
@@ -575,6 +589,23 @@ Examples:
     return parser
 
 
+def _install_signal_handlers(bot: SteamIdleBot) -> None:
+    """Route SIGINT/SIGTERM to a graceful stop so the session report still runs.
+
+    Signal handlers can only be installed from the main thread; the GUI path
+    runs the bot on a worker thread and never reaches here, so failures to set a
+    handler are suppressed rather than fatal.
+    """
+
+    def _handler(signum: int, _frame: object) -> None:
+        bot.logger.info("Received signal %s, stopping gracefully...", signum)
+        bot.signal_stop(signum)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        with contextlib.suppress(ValueError, OSError, AttributeError):
+            signal.signal(sig, _handler)
+
+
 def main() -> None:
     """Main entry point."""
     parser = create_parser()
@@ -619,6 +650,7 @@ def main() -> None:
 
         # Create and run bot
         bot = SteamIdleBot(settings)
+        _install_signal_handlers(bot)
         bot.run(dry_run=args.dry_run)
 
     except KeyboardInterrupt:
