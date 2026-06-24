@@ -142,7 +142,7 @@ class SteamIdleBot:
         self.logger.info("Entering main idle loop...")
         self.logger.info("Press Ctrl+C to stop")
 
-        refresh_interval = 600  # 10 minutes
+        refresh_interval = self.settings.refresh_interval_seconds
         last_refresh = time.time()
         loop_sleep_seconds = 1
         reconnect_cooldown_seconds = 10
@@ -282,7 +282,8 @@ class SteamIdleBot:
         console.print()
         console.print(table)
         console.print(summary)
-        console.print("[dim]Atualiza a cada 10 min • Ctrl+C para parar e ver o relatório[/dim]")
+        refresh_minutes = self.settings.refresh_interval_seconds / 60.0
+        console.print(f"[dim]Atualiza a cada {refresh_minutes:.0f} min • Ctrl+C para parar e ver o relatório[/dim]")
         console.print()
 
     def _capture_initial_cards(self) -> None:
@@ -533,6 +534,12 @@ Examples:
         help="Maximum number of games to idle (overrides config)",
     )
 
+    parser.add_argument(
+        "--refresh-interval-seconds",
+        type=int,
+        help="Seconds between re-running the game-selection pipeline while idling (default 600)",
+    )
+
     parser.add_argument("--config", type=str, help="Path to configuration file")
 
     parser.add_argument(
@@ -594,6 +601,9 @@ def main() -> None:
 
         if args.max_games:
             settings.max_games_to_idle = args.max_games
+
+        if args.refresh_interval_seconds is not None:
+            settings.refresh_interval_seconds = args.refresh_interval_seconds
 
         if args.no_cache:
             settings.enable_card_cache = False

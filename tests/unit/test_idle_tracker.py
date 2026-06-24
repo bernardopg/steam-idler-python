@@ -96,3 +96,23 @@ def test_idle_tracker_reports_unknown_drop_status_separately(tmp_path, monkeypat
     out_file = tmp_path / "reports" / "unknown.txt"
     tracker.save_report(str(out_file))
     assert out_file.exists()
+
+
+def test_idle_seconds_live_until_end_set(monkeypatch) -> None:
+    """While a session is live (end not set) duration must grow, not read 0."""
+    info = GameIdleInfo(app_id=10, start_time=100.0)
+    monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: 700.0)
+    assert info.idle_seconds == 600.0
+    assert info.idle_minutes == 10.0
+    # Once end_time is recorded it freezes to the recorded span.
+    info.end_time = 400.0
+    assert info.idle_seconds == 300.0
+
+
+def test_session_seconds_live_until_end_set(monkeypatch) -> None:
+    tracker = IdleTracker()
+    monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: 100.0)
+    tracker.start_session([10])
+    monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: 760.0)
+    assert tracker.session_seconds == 660.0
+    assert tracker.session_minutes == 11.0

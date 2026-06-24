@@ -173,6 +173,11 @@ class Settings(BaseSettings):
         le=32,
         description="Maximum number of games to idle simultaneously (Steam limit: 32)",
     )
+    refresh_interval_seconds: int = Field(
+        default=600,
+        ge=10,
+        description="Seconds between re-running the game-selection pipeline while idling",
+    )
     idling_backend: Literal["python", "steam_utility"] = Field(
         default="python",
         description="Backend used to keep Steam games idling",
@@ -353,6 +358,7 @@ class Settings(BaseSettings):
                     "EXCLUDE_APP_IDS": "exclude_app_ids",
                     "USE_OWNED_GAMES": "use_owned_games",
                     "MAX_GAMES_TO_IDLE": "max_games_to_idle",
+                    "REFRESH_INTERVAL_SECONDS": "refresh_interval_seconds",
                     "IDLING_BACKEND": "idling_backend",
                     "STEAM_UTILITY_PATH": "steam_utility_path",
                     "STEAM_API_KEY": "steam_api_key",
@@ -400,6 +406,7 @@ class Settings(BaseSettings):
             "filter_completed_card_drops": "FILTER_COMPLETED_CARD_DROPS",
             "exclude_app_ids": "EXCLUDE_APP_IDS",
             "max_games_to_idle": "MAX_GAMES_TO_IDLE",
+            "refresh_interval_seconds": "REFRESH_INTERVAL_SECONDS",
             "idling_backend": "IDLING_BACKEND",
             "steam_utility_path": "STEAM_UTILITY_PATH",
             "steam_api_key": "STEAM_API_KEY",

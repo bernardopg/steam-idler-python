@@ -335,6 +335,7 @@ def test_main_applies_overrides(monkeypatch):
         config="config.py",
         no_trading_cards=True,
         max_games=4,
+        refresh_interval_seconds=120,
         no_cache=True,
         max_checks=8,
         skip_failures=True,
@@ -361,6 +362,7 @@ def test_main_applies_overrides(monkeypatch):
 
     assert settings.filter_trading_cards is False
     assert settings.max_games_to_idle == 4
+    assert settings.refresh_interval_seconds == 120
     assert settings.enable_card_cache is False
     assert settings.max_checks == 8
     assert settings.skip_failures is True

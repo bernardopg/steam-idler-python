@@ -16,6 +16,7 @@ All commands run through `uv` (it auto-syncs the environment).
 ./run.sh --dry-run              # print config + chosen games, no Steam contact
 ./run.sh --no-trading-cards     # skip trading-card filtering
 ./run.sh --max-games 10         # cap idled games
+./run.sh --refresh-interval-seconds 300  # re-run the selection pipeline every 5 min
 ./run-gui.sh                    # launch the Tkinter GUI (== python -m steam_idle_bot --gui)
 
 # Direct module entry (needs src/ on PYTHONPATH, which run.sh sets)
@@ -44,7 +45,7 @@ A `.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`) blo
 - Config precedence (`settings_customise_sources`): init kwargs → env vars → `.env` → secrets. Custom `FlexibleEnvSettingsSource` / `FlexibleDotEnvSettingsSource` tolerantly parse list fields (`GAME_APP_IDS`, `EXCLUDE_APP_IDS` accept JSON `[570,730]` or CSV `570,730`) and the cookie map (`STEAM_WEB_COOKIES` accepts JSON object, browser-export JSON array, or `k=v; k=v`).
 - `Settings.load_from_file()` also imports a legacy `config.py` if present, mapping its UPPER_CASE names to settings fields.
 - `save_to_env_file()` serializes settings back to `.env` — used by the GUI to persist user changes.
-- CLI flags in `main.py` override loaded settings (`--max-games`, `--no-cache`, `--max-checks`, `--skip-failures`, `--keep-completed-drops`, `--no-trading-cards`).
+- CLI flags in `main.py` override loaded settings (`--max-games`, `--refresh-interval-seconds`, `--no-cache`, `--max-checks`, `--skip-failures`, `--keep-completed-drops`, `--no-trading-cards`).
 - **Web session auth**: card-drop scraping needs a `web:community` `steamLoginSecure` (see [[steam-web-cookies-community-audience]] memory). `CardDropChecker._verify_session()` probes `/badges/` (checks `g_steamID = "<id>"`) and downgrades to unauthenticated (excluding unknowns + warning) when the session is logged out — preventing the bot from idling drained games on a store-only/expired token. `AUTO_BROWSER_COOKIES=true` (default) makes `main._recover_session_via_browser()` pull a valid community session from a locally logged-in browser via `steam/browser_cookies.py` (`browser_cookie3`, import-guarded; `BROWSER_COOKIES_BROWSER=auto|chrome|firefox|...`) — self-healing as the short-lived community token rotates.
 - **Card counts**: when the badge API returns no `cards_remaining` (common once all badges are completed), `CardDropChecker._extract_drops_remaining()` parses the count from the badge page ("Jogo pode dar mais N cartas" / "N card drops remaining") into `drop_counts`; `main` feeds these into `IdleTracker` for the status panel and session report.
 

@@ -85,15 +85,18 @@ class TradingCardDetector:
 
             data = response.json()
 
-            if str(app_id) not in data or not data[str(app_id)]["success"]:
-                # Steam returns unsuccessful responses for some DLC/retired apps.
-                # Treat those as "no trading cards" and cache the result to avoid
-                # retrying the same known misses on every refresh cycle.
+            entry = data.get(str(app_id)) if isinstance(data, dict) else None
+            if not isinstance(entry, dict) or not entry.get("success"):
+                # Steam returns unsuccessful (or malformed) responses for some
+                # DLC/retired apps — e.g. app 2321720 can return a list where a
+                # dict is expected. Treat those as "no trading cards" and cache
+                # the result to avoid retrying the same known misses every cycle.
                 self._remember(app_id, False)
                 return False
 
-            categories = data[str(app_id)].get("data", {}).get("categories", [])
-            has_cards = any(cat.get("id") == self.TRADING_CARDS_CATEGORY_ID for cat in categories)
+            details = entry.get("data")
+            categories = details.get("categories", []) if isinstance(details, dict) else []
+            has_cards = any(isinstance(cat, dict) and cat.get("id") == self.TRADING_CARDS_CATEGORY_ID for cat in categories)
 
             self._remember(app_id, has_cards)
             return has_cards
