@@ -1,11 +1,5 @@
 # TODO
 
-## High Priority
-
-- Add steam-utility process reconciliation: detect existing idles for target App
-  IDs before starting, deduplicate them, and report whether they are reused,
-  stopped, or left untouched.
-
 ## Card-Drop Accuracy
 
 - Add a structured checkpoint report mode, for example
