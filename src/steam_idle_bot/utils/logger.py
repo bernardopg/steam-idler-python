@@ -3,9 +3,14 @@
 __all__ = ["SteamIdleLogger", "setup_logging"]
 
 import logging
+from logging.handlers import RotatingFileHandler
 
 from rich.console import Console
 from rich.logging import RichHandler
+
+# Cap the on-disk log so a long-running idle session can't grow it unbounded.
+_LOG_MAX_BYTES = 10 * 1024 * 1024
+_LOG_BACKUP_COUNT = 3
 
 
 class SteamIdleLogger:
@@ -41,9 +46,15 @@ class SteamIdleLogger:
             console_handler.setLevel(getattr(logging, level.upper()))
             self.logger.addHandler(console_handler)
 
-        # File handler if specified
+        # File handler if specified. Rotate so a long-running idle session does
+        # not grow a single log file without bound.
         if log_file:
-            file_handler = logging.FileHandler(log_file)
+            file_handler = RotatingFileHandler(
+                log_file,
+                maxBytes=_LOG_MAX_BYTES,
+                backupCount=_LOG_BACKUP_COUNT,
+                encoding="utf-8",
+            )
             file_handler.setFormatter(formatter)
             file_handler.setLevel(getattr(logging, level.upper()))
             self.logger.addHandler(file_handler)

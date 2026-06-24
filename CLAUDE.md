@@ -84,6 +84,6 @@ The three services are distinct: `TradingCardDetector` = *does this game have ca
 
 ## Dependency pins (don't break these)
 
-`pyproject.toml` lists only direct deps as loose floors; `uv.lock` pins exact versions (run `uv lock --upgrade` to refresh). Two non-obvious pins are load-bearing for the `steam` library:
+`pyproject.toml` lists only direct deps as loose floors; `uv.lock` pins exact versions (run `uv lock --upgrade` to refresh). Two non-obvious constraints are load-bearing for the `steam` library:
 - **`protobuf>=3.20,<4`** — the `steam[client]` extra ships protoc-generated `_pb2` modules that fail on protobuf 4+ (`Descriptors cannot be created directly`). Never bump to 4.x while on `steam` 1.4.x.
-- **`eventemitter==0.2.0`** — `steam.client` does `from eventemitter import EventEmitter`, but neither `steam` nor `gevent-eventemitter` declares the standalone `eventemitter` package; without the explicit pin, runtime imports break (tests pass anyway because they mock Steam).
+- **Do NOT add a standalone `eventemitter` package.** `steam.client` does `from eventemitter import EventEmitter`, but `steam[client]` already supplies this via `gevent-eventemitter` (a self-contained gevent-based `EventEmitter`). Installing the standalone `eventemitter` overwrites that module with an incompatible one and breaks the python backend at `SteamClient()` (`'SteamClient' object has no attribute '_listeners'`). An earlier `eventemitter==0.2.0` pin was removed for exactly this reason (commit `3f55645`); tests pass either way because they mock Steam, so a re-added pin only fails at runtime.
