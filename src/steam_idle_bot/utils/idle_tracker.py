@@ -240,3 +240,33 @@ class IdleTracker:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(report, encoding="utf-8")
         self.logger.info(f"Report saved to: {filepath}")
+
+    def to_dict(self) -> dict:
+        """Structured snapshot of the session, suitable for JSON checkpoints."""
+        return {
+            "session": {
+                "start": self.session_start,
+                "end": self.session_end,
+                "seconds": round(self.session_seconds, 1),
+                "minutes": round(self.session_minutes, 2),
+            },
+            "totals": {
+                "games": len(self.games),
+                "cards_dropped": self.total_cards_dropped,
+                "games_with_drops": len(self.games_with_drops),
+                "games_without_drops": len(self.games_without_drops),
+                "games_unknown": len(self.games_with_unknown_drops),
+            },
+            "games": [
+                {
+                    "app_id": game.app_id,
+                    "name": game.name or None,
+                    "cards_before": game.cards_before,
+                    "cards_after": game.cards_after,
+                    "cards_dropped": game.cards_dropped,
+                    "drop_status_known": game.drop_status_known,
+                    "idle_minutes": round(game.idle_minutes, 2),
+                }
+                for game in sorted(self.games.values(), key=lambda g: g.app_id)
+            ],
+        }

@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import json
 import signal
 import sys
 import threading
@@ -148,10 +149,16 @@ class SteamIdleBot:
         self.logger.info("Press Ctrl+C to stop")
 
         refresh_interval = self.settings.refresh_interval_seconds
-        last_refresh = time.time()
         loop_sleep_seconds = 1
         reconnect_cooldown_seconds = 10
         next_reconnect_attempt = 0.0
+
+        loop_start = time.time()
+        last_refresh = loop_start
+        checkpoint_interval = self.settings.checkpoint_minutes * 60
+        duration_limit = self.settings.duration_minutes * 60
+        last_checkpoint = loop_start
+        checkpoint_seq = 0
 
         while not self._stop_event.is_set():
             try:
@@ -159,8 +166,22 @@ class SteamIdleBot:
                 if self._stop_event.is_set():
                     break
 
-                # Refresh games every 10 minutes
-                if time.time() - last_refresh >= refresh_interval:
+                now = time.time()
+
+                # Stop after the configured run duration, if any.
+                if duration_limit and now - loop_start >= duration_limit:
+                    self.logger.info("Reached configured duration of %d min; stopping", self.settings.duration_minutes)
+                    self._stop_event.set()
+                    break
+
+                # Periodic structured checkpoint.
+                if checkpoint_interval and now - last_checkpoint >= checkpoint_interval:
+                    checkpoint_seq += 1
+                    self._write_checkpoint(checkpoint_seq, games)
+                    last_checkpoint = now
+
+                # Refresh games every refresh_interval seconds
+                if now - last_refresh >= refresh_interval:
                     self.logger.info("Refreshing game status...")
 
                     # Get fresh games list
@@ -177,11 +198,10 @@ class SteamIdleBot:
                         self._idle_tracker.game_names.update(self._game_name_map())
 
                     self._print_status_panel(games)
-                    last_refresh = time.time()
+                    last_refresh = now
 
                 # Check connection
                 if not self.client.is_connected():
-                    now = time.time()
                     if now < next_reconnect_attempt:
                         continue
 
@@ -290,11 +310,7 @@ class SteamIdleBot:
             table.add_row(str(index), str(app_id), name, cards, f"{minutes:.0f} min")
 
         cards_label = str(total_cards) if cards_remaining else "desconhecido (badge API sem dados)"
-        summary = (
-            f"[bold]{len(games)}[/bold] jogos em idle  •  "
-            f"cartas restantes conhecidas: [bold]{cards_label}[/bold]  •  "
-            f"sessão: [bold]{tracker.session_minutes:.0f} min[/bold]"
-        )
+        summary = f"[bold]{len(games)}[/bold] jogos em idle  •  cartas restantes conhecidas: [bold]{cards_label}[/bold]  •  sessão: [bold]{tracker.session_minutes:.0f} min[/bold]"
 
         console = Console()
         console.print()
@@ -320,9 +336,7 @@ class SteamIdleBot:
             # populates the panel/report when the badge API has no card data.
             if hasattr(self.game_manager, "get_drop_counts"):
                 for app_id, count in self.game_manager.get_drop_counts().items():
-                    if self._idle_tracker.has_pending_card_before(app_id) is False and (
-                        app_id not in self._idle_tracker.games or self._idle_tracker.games[app_id].cards_before is None
-                    ):
+                    if self._idle_tracker.has_pending_card_before(app_id) is False and (app_id not in self._idle_tracker.games or self._idle_tracker.games[app_id].cards_before is None):
                         self._idle_tracker.set_cards_before(app_id, count)
         except Exception as e:
             self.logger.warning(f"Could not capture initial card counts: {e}")
@@ -373,6 +387,25 @@ class SteamIdleBot:
             if game is not None and game.cards_before is not None and game.cards_after is None:
                 self._idle_tracker.set_cards_after(app_id, 0)
 
+    def _write_checkpoint(self, sequence: int, games: list[int]) -> None:
+        """Write a structured JSON + Markdown checkpoint of the live session."""
+        try:
+            snapshot = self._idle_tracker.to_dict()
+            snapshot["checkpoint"] = {
+                "sequence": sequence,
+                "selected_games": list(games),
+                "refresh_interval_seconds": self.settings.refresh_interval_seconds,
+            }
+            checkpoints_dir = Path("logs") / "checkpoints"
+            checkpoints_dir.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            base = checkpoints_dir / f"checkpoint_{sequence:03d}_{stamp}"
+            base.with_suffix(".json").write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+            base.with_suffix(".md").write_text(self._idle_tracker.format_report(), encoding="utf-8")
+            self.logger.info("Wrote checkpoint #%d to %s.{json,md}", sequence, base)
+        except Exception as e:
+            self.logger.warning(f"Could not write checkpoint #{sequence}: {e}")
+
     def _show_session_report(self) -> None:
         """Show the session report when bot stops."""
         self._idle_tracker.end_session()
@@ -380,6 +413,15 @@ class SteamIdleBot:
         # Capture final card counts before showing report
         with contextlib.suppress(Exception):
             self._capture_final_cards()
+
+        # Optionally re-scrape after a delay: Steam badge pages can lag behind
+        # the actual drops at the moment idling stops.
+        delay = self.settings.post_run_verify_seconds
+        if delay > 0 and self._games_to_idle:
+            self.logger.info("Re-verifying card counts in %ds (post-run verification)...", delay)
+            self.client.sleep(delay)
+            with contextlib.suppress(Exception):
+                self._capture_final_cards()
 
         # Print report to console
         report = self._idle_tracker.format_report()
@@ -456,11 +498,7 @@ class SteamIdleBot:
 
             cookies = load_community_cookies(steam_id, self.settings.browser_cookies_browser)
             if not cookies:
-                self.logger.warning(
-                    "Could not recover community cookies from a local browser. "
-                    "Card-drop filtering stays conservative (drained games excluded). "
-                    "Log into Steam in your browser, or set IDLING_BACKEND=python."
-                )
+                self.logger.warning("Could not recover community cookies from a local browser. Card-drop filtering stays conservative (drained games excluded). Log into Steam in your browser, or set IDLING_BACKEND=python.")
                 return False
 
             session = SteamClientWrapper._build_web_session_from_cookies(cookies)
@@ -613,7 +651,61 @@ Examples:
         help="Include games even if all trading-card drops are exhausted",
     )
 
+    parser.add_argument(
+        "--checkpoint-minutes",
+        type=int,
+        help="Write a JSON/Markdown checkpoint every N minutes while idling (0 disables)",
+    )
+
+    parser.add_argument(
+        "--duration-minutes",
+        type=int,
+        help="Stop idling after N minutes (0 runs until interrupted)",
+    )
+
+    parser.add_argument(
+        "--post-run-verify-seconds",
+        type=int,
+        help="Re-scrape card counts this many seconds after stopping (0 disables)",
+    )
+
+    parser.add_argument(
+        "--stop-app-ids",
+        type=str,
+        help="Stop running steam-utility idles for these App IDs (JSON or CSV) and exit",
+    )
+
     return parser
+
+
+def _parse_app_id_list(raw: str) -> list[int]:
+    """Parse an App ID list given as JSON (``[570,730]``) or CSV (``570,730``)."""
+    raw = raw.strip()
+    if not raw:
+        return []
+    with contextlib.suppress(json.JSONDecodeError):
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [int(item) for item in parsed]
+    return [int(part) for part in raw.replace(";", ",").split(",") if part.strip()]
+
+
+def _stop_app_ids(settings: Settings, app_ids: list[int]) -> int:
+    """Stop steam-utility idle processes for the given App IDs. Returns count stopped."""
+    from .steam.steam_utility import SteamUtilityIdleClient
+
+    client = SteamUtilityIdleClient(settings)
+    existing = client.bridge.find_idle_pids()
+    stopped = 0
+    for app_id in app_ids:
+        for pid in existing.get(app_id, []):
+            client._stop_pid(pid)
+            stopped += 1
+    if stopped:
+        print(f"Stopped {stopped} steam-utility idle process(es) for {app_ids}")
+    else:
+        print(f"No running steam-utility idles found for {app_ids}")
+    return stopped
 
 
 def _install_signal_handlers(bot: SteamIdleBot) -> None:
@@ -653,6 +745,11 @@ def main() -> None:
             settings_path = Path(args.config)
         settings = Settings.load_from_file(settings_path)
 
+        # Maintenance mode: stop idles for specific App IDs and exit.
+        if args.stop_app_ids:
+            _stop_app_ids(settings, _parse_app_id_list(args.stop_app_ids))
+            return
+
         # Override settings from command line
         if args.no_trading_cards:
             settings.filter_trading_cards = False
@@ -674,6 +771,15 @@ def main() -> None:
 
         if args.keep_completed_drops:
             settings.filter_completed_card_drops = False
+
+        if args.checkpoint_minutes is not None:
+            settings.checkpoint_minutes = args.checkpoint_minutes
+
+        if args.duration_minutes is not None:
+            settings.duration_minutes = args.duration_minutes
+
+        if args.post_run_verify_seconds is not None:
+            settings.post_run_verify_seconds = args.post_run_verify_seconds
 
         # Create and run bot
         bot = SteamIdleBot(settings)
