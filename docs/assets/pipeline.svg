@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="340" viewBox="0 0 1120 340" role="img" aria-label="Game selection pipeline">
+  <defs>
+    <style>
+      .lbl{font-family:Segoe UI,Helvetica,Arial,sans-serif;}
+      .t{fill:#ffffff;font-weight:700;}
+      .s{fill:#c7d5e0;font-weight:500;}
+      .n{fill:#a3cf06;font-weight:700;}
+      .h{fill:#8aa0b2;font-weight:600;letter-spacing:1px;}
+    </style>
+    <marker id="f" markerWidth="12" markerHeight="12" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#66c0f4"/>
+    </marker>
+    <linearGradient id="fun" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2a475e"/>
+      <stop offset="1" stop-color="#16324a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1120" height="340" rx="16" fill="#0f1216"/>
+  <rect x="0" y="0" width="1120" height="5" fill="#a3cf06"/>
+  <text x="40" y="44" class="lbl t" font-size="24">Game selection pipeline</text>
+  <text x="40" y="68" class="lbl s" font-size="14">GameManager.get_games_to_idle() — applied in order, narrowing the set each stage</text>
+
+  <!-- funnel band -->
+  <path d="M40 110 L1080 110 L1010 240 L110 240 Z" fill="url(#fun)" opacity="0.35"/>
+
+  <g class="lbl">
+    <!-- 1 Source -->
+    <rect x="48" y="118" width="206" height="114" rx="12" fill="#1b2838" stroke="#66c0f4" stroke-width="2"/>
+    <text x="66" y="146" class="h" font-size="12">1 · SOURCE</text>
+    <text x="66" y="172" class="t" font-size="16">Library</text>
+    <text x="66" y="194" class="s" font-size="12">owned games (Web API or</text>
+    <text x="66" y="211" class="s" font-size="12">steam_utility) · or manual IDs</text>
+
+    <!-- 2 Has cards -->
+    <rect x="286" y="118" width="206" height="114" rx="12" fill="#1b2838" stroke="#66c0f4" stroke-width="2"/>
+    <text x="304" y="146" class="h" font-size="12">2 · HAS CARDS</text>
+    <text x="304" y="172" class="t" font-size="16">filter_trading_cards</text>
+    <text x="304" y="194" class="s" font-size="12">BadgeService catalog,</text>
+    <text x="304" y="211" class="s" font-size="12">else store-page detect</text>
+
+    <!-- 3 Drops remaining -->
+    <rect x="524" y="118" width="206" height="114" rx="12" fill="#1b2838" stroke="#66c0f4" stroke-width="2"/>
+    <text x="542" y="146" class="h" font-size="12">3 · DROPS LEFT</text>
+    <text x="542" y="172" class="t" font-size="16">completed drops out</text>
+    <text x="542" y="194" class="s" font-size="12">API badges → scrape;</text>
+    <text x="542" y="211" class="s" font-size="12">no-drop cache skips farmed</text>
+
+    <!-- 4 Exclude + cap -->
+    <rect x="762" y="118" width="206" height="114" rx="12" fill="#1b2838" stroke="#66c0f4" stroke-width="2"/>
+    <text x="780" y="146" class="h" font-size="12">4 · EXCLUDE + CAP</text>
+    <text x="780" y="172" class="t" font-size="16">EXCLUDE_APP_IDS</text>
+    <text x="780" y="194" class="s" font-size="12">drop excluded, then</text>
+    <text x="780" y="211" class="s" font-size="12">truncate to max_games</text>
+
+    <!-- result -->
+    <rect x="1000" y="138" width="74" height="74" rx="37" fill="#16324a" stroke="#a3cf06" stroke-width="2"/>
+    <text x="1037" y="172" text-anchor="middle" class="n" font-size="22">≤ 32</text>
+    <text x="1037" y="194" text-anchor="middle" class="s" font-size="11">idled</text>
+  </g>
+
+  <g fill="none" stroke="#66c0f4" stroke-width="2.5">
+    <path d="M256 175 L284 175" marker-end="url(#f)"/>
+    <path d="M494 175 L522 175" marker-end="url(#f)"/>
+    <path d="M732 175 L760 175" marker-end="url(#f)"/>
+    <path d="M970 175 L998 175" marker-end="url(#f)"/>
+  </g>
+
+  <g class="lbl s" font-size="13" fill="#8aa0b2">
+    <text x="40" y="288">Steam hard limit: 32 simultaneous games. Authenticated web session pushed into the scrapers; positive verdicts are never cached.</text>
+    <text x="40" y="312">Re-runs every REFRESH_INTERVAL_SECONDS (default 600s) so the set tracks drops draining in real time.</text>
+  </g>
+</svg>
