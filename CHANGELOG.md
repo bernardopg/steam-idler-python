@@ -8,6 +8,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
+- Preflight: advisory **environment checks** for the `steam_utility` backend — warn when no
+  local Steam client is running, and additionally when no graphical session
+  (`DISPLAY`/`WAYLAND_DISPLAY`) is available to launch it. Never aborts; skipped for the
+  `python` backend and on platforms without `/proc`.
+- steam_utility: **idle process reconciliation** before starting — existing idles for target
+  App IDs (e.g. from a previous run) are detected via `/proc`, the first is reused (adopted),
+  duplicates are stopped, and idles for non-target apps are left untouched and reported. Avoids
+  spawning duplicate idlers across restarts. Linux-only; a no-op without `/proc`.
 - Drops: persistent **no-drop cache** (`.cache/no_drop_cards.json`, per account) — games
   confirmed without remaining drops are skipped on later runs, so each run scans less.
   New settings `DROP_CACHE_PATH` / `DROP_CACHE_TTL_DAYS`.
@@ -50,6 +58,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Shutdown: `SIGINT`/`SIGTERM` now trigger a **graceful stop** that still emits the session
   report and runs cleanup. Previously `SIGTERM` (e.g. when `run.sh` is terminated) killed the
   process before the `finally` report could run.
+- Report: final card counts are now **backfilled to 0** for games that started with known
+  cards but are no longer reported by the authenticated badge/scraper read at stop — a drained
+  badge means no remaining drops, so the session report shows a confident before/after instead
+  of `?`. Backfill only runs when an authenticated read actually returned data.
 
 ### Security
 

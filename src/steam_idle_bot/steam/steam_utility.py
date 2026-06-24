@@ -4,8 +4,11 @@ from __future__ import annotations
 
 __all__ = ["SteamUtilityError", "SteamUtilityBridge", "SteamUtilityIdleClient"]
 
+import contextlib
 import json
 import logging
+import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -14,6 +17,20 @@ from typing import Any
 from ..utils.redaction import mask_username
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_idle_app_id(args: list[str]) -> int | None:
+    """Return the app id of a steam-utility ``idle <app_id>`` invocation.
+
+    Requires a ``SteamUtility`` marker among the args so unrelated processes
+    that merely contain an ``idle`` token are not misidentified.
+    """
+    if not any("steamutility" in a.lower() for a in args):
+        return None
+    for index, arg in enumerate(args):
+        if arg == "idle" and index + 1 < len(args) and args[index + 1].isdigit():
+            return int(args[index + 1])
+    return None
 
 
 class SteamUtilityError(RuntimeError):
@@ -95,6 +112,30 @@ class SteamUtilityBridge:
             text=True,
         )
 
+    def find_idle_pids(self, proc_root: str = "/proc") -> dict[int, list[int]]:
+        """Map app_id -> sorted PIDs of running steam-utility idle processes.
+
+        Scans ``/proc`` command lines; returns an empty map where ``/proc`` is
+        unavailable (e.g. non-Linux), making reconciliation a no-op there.
+        """
+        root = Path(proc_root)
+        if not root.is_dir():
+            return {}
+
+        found: dict[int, list[int]] = {}
+        for entry in root.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                raw = (entry / "cmdline").read_bytes()
+            except OSError:
+                continue
+            args = [part.decode("utf-8", "replace") for part in raw.split(b"\x00") if part]
+            app_id = _extract_idle_app_id(args)
+            if app_id is not None:
+                found.setdefault(app_id, []).append(int(entry.name))
+        return {app_id: sorted(pids) for app_id, pids in found.items()}
+
     def _resolve_project_root(self) -> Path:
         for candidate in self._candidate_paths():
             root = self._normalize_candidate(candidate)
@@ -149,6 +190,9 @@ class SteamUtilityIdleClient:
         self._steam_id: str | None = None
         self._username: str | None = None
         self._processes: dict[int, subprocess.Popen[str]] = {}
+        # External idle PIDs adopted from a previous run instead of re-spawned.
+        self._adopted_pids: dict[int, int] = {}
+        self._reconciled = False
 
     def initialize(self) -> bool:
         """Resolve the steam-utility repository before starting."""
@@ -184,8 +228,65 @@ class SteamUtilityIdleClient:
         )
         return True
 
+    def reconcile_existing_idles(
+        self,
+        game_ids: list[int],
+        *,
+        proc_root: str = "/proc",
+    ) -> dict[str, list[tuple[int, int]]]:
+        """Adopt or deduplicate pre-existing steam-utility idles before starting.
+
+        For each target app id already being idled by an external process (e.g. a
+        previous bot run), the first PID is **reused** (adopted) and any further
+        duplicates are **stopped**. Idles for non-target apps are **left
+        untouched** and only reported. Returns a report keyed by
+        ``reused``/``stopped``/``untouched`` mapping to ``(app_id, pid)`` tuples.
+        """
+        targets: list[int] = []
+        seen: set[int] = set()
+        for app_id in game_ids:
+            if app_id not in seen:
+                seen.add(app_id)
+                targets.append(app_id)
+
+        existing = self.bridge.find_idle_pids(proc_root)
+        own = {process.pid for process in self._processes.values()}
+        report: dict[str, list[tuple[int, int]]] = {"reused": [], "stopped": [], "untouched": []}
+
+        for app_id in targets:
+            pids = [pid for pid in existing.get(app_id, []) if pid not in own]
+            if not pids:
+                continue
+            keep = pids[0]
+            self._adopted_pids[app_id] = keep
+            report["reused"].append((app_id, keep))
+            for duplicate in pids[1:]:
+                self._stop_pid(duplicate)
+                report["stopped"].append((app_id, duplicate))
+
+        for app_id, pids in existing.items():
+            if app_id in seen:
+                continue
+            for pid in pids:
+                if pid not in own:
+                    report["untouched"].append((app_id, pid))
+
+        if any(report.values()):
+            logger.info(
+                "Reconciled existing steam-utility idles: %d reused, %d duplicates stopped, %d left untouched",
+                len(report["reused"]),
+                len(report["stopped"]),
+                len(report["untouched"]),
+            )
+        return report
+
     def start_idling(self, game_ids: list[int]) -> bool:
         """Start or refresh long-running native idling processes."""
+        if not self._reconciled:
+            self._reconciled = True
+            with contextlib.suppress(Exception):
+                self.reconcile_existing_idles(game_ids)
+
         desired = []
         seen: set[int] = set()
         for game_id in game_ids:
@@ -198,9 +299,17 @@ class SteamUtilityIdleClient:
         for app_id in list(self._processes):
             if app_id not in desired_set:
                 self._stop_process(app_id)
+        for app_id in list(self._adopted_pids):
+            if app_id not in desired_set:
+                del self._adopted_pids[app_id]
 
         started_all = True
         for app_id in desired:
+            adopted = self._adopted_pids.get(app_id)
+            if adopted is not None and self._pid_alive(adopted):
+                # An external idle from a previous run is already covering this app.
+                continue
+
             process = self._processes.get(app_id)
             if process is not None and process.poll() is None:
                 continue
@@ -232,9 +341,10 @@ class SteamUtilityIdleClient:
         return started_all and self.is_connected()
 
     def stop_idling(self) -> bool:
-        """Stop all native idling processes."""
+        """Stop all native idling processes (adopted external idles are left running)."""
         for app_id in list(self._processes):
             self._stop_process(app_id)
+        self._adopted_pids.clear()
         return True
 
     def refresh_games(self, game_ids: list[int]) -> bool:
@@ -242,10 +352,23 @@ class SteamUtilityIdleClient:
         return self.start_idling(game_ids)
 
     def is_connected(self) -> bool:
-        """Consider the backend healthy while all managed processes are alive."""
-        if not self._processes:
+        """Healthy while every managed process and adopted external idle is alive."""
+        if not self._processes and not self._adopted_pids:
             return False
-        return all(process.poll() is None for process in self._processes.values())
+        managed_ok = all(process.poll() is None for process in self._processes.values())
+        adopted_ok = all(self._pid_alive(pid) for pid in self._adopted_pids.values())
+        return managed_ok and adopted_ok
+
+    @staticmethod
+    def _pid_alive(pid: int, proc_root: str = "/proc") -> bool:
+        """Return True while the PID is present (a live process)."""
+        return Path(proc_root, str(pid)).exists()
+
+    def _stop_pid(self, pid: int) -> None:
+        """Terminate an external idle PID we did not spawn ourselves."""
+        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+            os.kill(pid, signal.SIGTERM)
+        logger.info("Stopped duplicate steam-utility idle PID %s", pid)
 
     def reconnect(self) -> bool:
         """Re-read the local Steam state and let the caller restart idling."""
