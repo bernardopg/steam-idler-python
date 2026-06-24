@@ -13,8 +13,6 @@
   selected games, card counts, drops, refreshes, and cleanup status.
 - Add delayed post-run verification, e.g. scrape immediately at stop and again
   after 30-60 seconds, because Steam badge pages can lag behind actual drops.
-- Improve final card-count capture so the session report always includes before
-  and after card counts from the authenticated scraper.
 - Investigate why Badge API returns no card-drop data for all candidates and
   document whether that is expected for this account/API endpoint.
 

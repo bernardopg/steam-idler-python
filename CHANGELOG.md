@@ -54,6 +54,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Shutdown: `SIGINT`/`SIGTERM` now trigger a **graceful stop** that still emits the session
   report and runs cleanup. Previously `SIGTERM` (e.g. when `run.sh` is terminated) killed the
   process before the `finally` report could run.
+- Report: final card counts are now **backfilled to 0** for games that started with known
+  cards but are no longer reported by the authenticated badge/scraper read at stop — a drained
+  badge means no remaining drops, so the session report shows a confident before/after instead
+  of `?`. Backfill only runs when an authenticated read actually returned data.
 
 ### Security
 

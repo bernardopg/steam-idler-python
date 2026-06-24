@@ -329,26 +329,49 @@ class SteamIdleBot:
 
     def _capture_final_cards(self) -> None:
         """Capture the final number of cards remaining for each game."""
+        # Tracks whether at least one authenticated source returned data. When it
+        # did, any idled game that started with known cards but is now absent from
+        # the response has had its badge drained, so its final count is 0.
+        authenticated_read = False
         try:
             badge_service = self.game_manager.badge_service
             if badge_service and hasattr(badge_service, "get_cards_remaining"):
                 steam_id = self.client.steam_id
                 if steam_id:
                     cards = badge_service.get_cards_remaining(steam_id)
-                    for app_id, count in cards.items():
-                        self._idle_tracker.set_cards_after(app_id, count)
-                    self.logger.info(f"Captured final card counts for {len(cards)} games")
+                    if cards is not None:
+                        authenticated_read = True
+                        for app_id, count in cards.items():
+                            self._idle_tracker.set_cards_after(app_id, count)
+                        self.logger.info(f"Captured final card counts for {len(cards)} games")
 
             # Fallback/augment: re-scrape idled games to read current counts so the
             # session report can show how many cards dropped while idling.
             if self._games_to_idle and self._steam_id and hasattr(self.game_manager, "fetch_drop_counts"):
                 counts = self.game_manager.fetch_drop_counts(self._games_to_idle, self._steam_id)
-                for app_id, count in counts.items():
-                    game = self._idle_tracker.games.get(app_id)
-                    if game is None or game.cards_after is None:
-                        self._idle_tracker.set_cards_after(app_id, count)
+                if counts is not None:
+                    authenticated_read = True
+                    for app_id, count in counts.items():
+                        game = self._idle_tracker.games.get(app_id)
+                        if game is None or game.cards_after is None:
+                            self._idle_tracker.set_cards_after(app_id, count)
         except Exception as e:
             self.logger.warning(f"Could not capture final card counts: {e}")
+
+        if authenticated_read:
+            self._backfill_drained_final_counts()
+
+    def _backfill_drained_final_counts(self) -> None:
+        """Set ``cards_after = 0`` for idled games drained during this session.
+
+        A game that started with a known card count but is no longer reported by
+        the authenticated badge/scraper read has no remaining drops, so the
+        session report can show a confident before/after instead of ``?``.
+        """
+        for app_id in self._games_to_idle:
+            game = self._idle_tracker.games.get(app_id)
+            if game is not None and game.cards_before is not None and game.cards_after is None:
+                self._idle_tracker.set_cards_after(app_id, 0)
 
     def _show_session_report(self) -> None:
         """Show the session report when bot stops."""

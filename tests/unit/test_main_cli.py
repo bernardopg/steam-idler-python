@@ -261,6 +261,39 @@ def test_main_loop_keyboard_interrupt_stops(monkeypatch):
     bot._main_loop([1])
 
 
+def test_capture_final_backfills_drained_games_to_zero():
+    """A game with known cards but absent from the final read drained to 0."""
+    bot = _build_bot()
+    bot._steam_id = "123"
+    bot._games_to_idle = [10, 20]
+    # Final authenticated read only reports game 10; game 20 is now complete.
+    bot.game_manager.badge_service = DummyBadgeService({10: 2})
+    bot._idle_tracker.start_session([10, 20])
+    bot._idle_tracker.set_cards_before(10, 5)
+    bot._idle_tracker.set_cards_before(20, 3)
+
+    bot._capture_final_cards()
+
+    assert bot._idle_tracker.games[10].cards_after == 2
+    assert bot._idle_tracker.games[20].cards_after == 0
+    # Both games now have a confident before/after, none left "unknown".
+    assert bot._idle_tracker.games_with_unknown_drops == []
+
+
+def test_capture_final_no_backfill_when_read_fails():
+    """If no authenticated source returned data, don't fabricate zeros."""
+    bot = _build_bot()
+    bot._steam_id = "123"
+    bot._games_to_idle = [10, 20]
+    bot.game_manager.badge_service = DummyBadgeService(exc=RuntimeError("logged out"))
+    bot._idle_tracker.start_session([10, 20])
+    bot._idle_tracker.set_cards_before(10, 5)
+
+    bot._capture_final_cards()
+
+    assert bot._idle_tracker.games[10].cards_after is None
+
+
 def test_signal_stop_sets_event_without_network_teardown():
     """signal_stop must only flip the event; cleanup happens later in run()."""
     bot = _build_bot()
