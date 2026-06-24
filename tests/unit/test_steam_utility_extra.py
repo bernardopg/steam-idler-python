@@ -91,6 +91,7 @@ class FakeBridge:
 class TestRunJsonCommand:
     def test_success(self):
         bridge = SteamUtilityBridge(configured_path=None)
+        bridge._project_root = Path("/tmp/steam-utility")  # skip filesystem discovery
         completed = MagicMock()
         completed.returncode = 0
         completed.stdout = json.dumps({"ok": True})
@@ -101,6 +102,7 @@ class TestRunJsonCommand:
 
     def test_nonzero_exit_code(self):
         bridge = SteamUtilityBridge(configured_path=None)
+        bridge._project_root = Path("/tmp/steam-utility")  # skip filesystem discovery
         completed = MagicMock()
         completed.returncode = 1
         completed.stderr = "error msg"
@@ -110,6 +112,7 @@ class TestRunJsonCommand:
 
     def test_empty_stdout(self):
         bridge = SteamUtilityBridge(configured_path=None)
+        bridge._project_root = Path("/tmp/steam-utility")  # skip filesystem discovery
         completed = MagicMock()
         completed.returncode = 0
         completed.stdout = ""
@@ -119,6 +122,7 @@ class TestRunJsonCommand:
 
     def test_invalid_json(self):
         bridge = SteamUtilityBridge(configured_path=None)
+        bridge._project_root = Path("/tmp/steam-utility")  # skip filesystem discovery
         completed = MagicMock()
         completed.returncode = 0
         completed.stdout = "not json {{{"
