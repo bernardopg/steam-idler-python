@@ -53,6 +53,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Security
 
+- Account-name redaction is now consistent across both idling backends: the shared
+  `utils.redaction.mask_username` helper masks the active account name in `steam_utility`
+  connection logs (previously logged in full), matching the python backend.
 - Documented why `protobuf` stays pinned `<4` (enforced by `steam[client]`), making
   advisories GHSA-8qvm-5x2c-j2w7 / GHSA-7gcm-g887-7qv7 non-actionable; accepted as
   tolerable risk (only trusted Steam-server data is deserialized).

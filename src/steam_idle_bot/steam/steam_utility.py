@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ..utils.redaction import mask_username
+
 logger = logging.getLogger(__name__)
 
 
@@ -178,7 +180,7 @@ class SteamUtilityIdleClient:
         self._username = str(active_name) if active_name else None
         logger.info(
             "Connected to local Steam session%s",
-            f" for {self._username}" if self._username else "",
+            f" for {mask_username(self._username)}" if self._username else "",
         )
         return True
 
