@@ -1,9 +1,14 @@
-"""Comprehensive tests for the Tkinter GUI module."""
+"""Comprehensive tests for the Tkinter GUI module.
+
+GUI tests require a display server (X11/Xvfb). In CI without one, tests
+are skipped rather than erroring. Locally they run normally.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import threading
 import tkinter as tk
@@ -27,10 +32,24 @@ from steam_idle_bot.gui import (
 # ---------------------------------------------------------------------------
 
 
+def _has_display() -> bool:
+    """Check whether a display server is available for tkinter."""
+    if os.environ.get("DISPLAY"):
+        return True
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    return False
+
+
 @pytest.fixture()
 def root():
     """Create a Tk root for testing and destroy it after."""
-    r = tk.Tk()
+    if not _has_display():
+        pytest.skip("No display server (DISPLAY/WAYLAND_DISPLAY not set)")
+    try:
+        r = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tk init failed — no display available")
     r.withdraw()
     yield r
     r.destroy()
