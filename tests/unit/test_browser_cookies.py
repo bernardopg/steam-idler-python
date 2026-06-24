@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 
 from steam_idle_bot.steam.browser_cookies import is_community_token, load_community_cookies
 
 
-def _make_token(aud, sub: str, steam_id: str = "76561198000000000") -> str:
+def _make_token(aud, sub: str, steam_id: str = "76561198000000000", exp: float | None = None) -> str:
     header = base64.urlsafe_b64encode(b'{"typ":"JWT","alg":"EdDSA"}').decode().rstrip("=")
-    payload_raw = json.dumps({"aud": aud, "sub": sub}).encode()
+    body: dict = {"aud": aud, "sub": sub}
+    if exp is not None:
+        body["exp"] = exp
+    payload_raw = json.dumps(body).encode()
     payload = base64.urlsafe_b64encode(payload_raw).decode().rstrip("=")
     return f"{steam_id}%7C%7C{header}.{payload}.signature"
 
@@ -37,6 +41,22 @@ def test_is_community_token_ignores_account_when_not_given() -> None:
 
 def test_is_community_token_handles_garbage() -> None:
     assert is_community_token("not-a-token", "123") is False
+
+
+def test_is_community_token_rejects_expired() -> None:
+    token = _make_token(["web:community"], "76561198000000000", exp=time.time() - 3600)
+    assert is_community_token(token, "76561198000000000") is False
+
+
+def test_is_community_token_accepts_fresh_exp() -> None:
+    token = _make_token(["web:community"], "76561198000000000", exp=time.time() + 3600)
+    assert is_community_token(token, "76561198000000000") is True
+
+
+def test_is_community_token_rejects_near_expiry_within_leeway() -> None:
+    # Within the safety margin counts as expired (would die mid-session).
+    token = _make_token(["web:community"], "76561198000000000", exp=time.time() + 30)
+    assert is_community_token(token, "76561198000000000") is False
 
 
 def test_load_community_cookies_without_browser_cookie3(monkeypatch) -> None:

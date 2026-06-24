@@ -15,12 +15,18 @@ import base64
 import binascii
 import json
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Cookies needed to authenticate steamcommunity web requests.
 _WANTED_COOKIES = ("steamLoginSecure", "sessionid", "steamCountry", "browserid", "timezoneOffset")
+
+# Reject community tokens this close to (or past) their JWT `exp`. The community
+# token lives ~24h and rotates; picking one with only seconds left would fail
+# the very next request, so leave a small safety margin.
+_EXPIRY_LEEWAY_SECONDS = 120
 
 
 def _decode_jwt_payload(token_value: str) -> dict[str, Any] | None:
@@ -60,7 +66,12 @@ def is_community_token(token_value: str, steam_id: str | None = None) -> bool:
         if digits and payload.get("sub") not in (digits, str(steam_id)):
             return False
 
-    return True
+    # Reject already-expired tokens: a logged-out browser often still holds a
+    # stale community cookie, and accepting it makes recovery falsely "succeed"
+    # while every scrape stays logged out. Tokens without an `exp` are not judged
+    # on expiry (their freshness cannot be determined here).
+    exp = payload.get("exp")
+    return not (isinstance(exp, (int, float)) and exp <= time.time() + _EXPIRY_LEEWAY_SECONDS)
 
 
 def load_community_cookies(steam_id: str | None = None, browser: str = "auto") -> dict[str, str] | None:
