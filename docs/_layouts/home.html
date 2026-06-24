@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% include head.html %}
+</head>
+<body>
+  {% include nav.html %}
+
+  <div class="container">
+    <!-- Hero -->
+    <div class="hero">
+      <img class="hero-banner" src="{{ '/assets/banner.svg' | relative_url }}" alt="Steam Idle Bot" />
+      <h1>Farm playtime &amp; trading-card drops — on autopilot</h1>
+      <p class="lede">
+        Steam Idle Bot syncs your library, idles <strong>only</strong> the games that still have
+        cards to drop, and remembers what's finished — so every run scans less and starts faster.
+      </p>
+      <div class="cta">
+        <a class="btn" href="{{ '/en/README.html' | relative_url }}">🚀 Get Started</a>
+        <a class="btn secondary" href="https://github.com/bernardopg/steam-idler-python">★ View on GitHub</a>
+      </div>
+      <div class="stat-row">
+        <span class="stat"><b>2</b> idling backends</span>
+        <span class="stat"><b>242</b> tests</span>
+        <span class="stat"><b>3.12–3.14</b> Python</span>
+        <span class="stat"><b>≤ 32</b> games / Steam limit</span>
+        <span class="stat"><b>MIT</b> licensed</span>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <section>
+      <div class="section-head">
+        <span class="eyebrow">Why it's different</span>
+        <h2>Accurate, self-pruning, and readable</h2>
+        <p>Most idlers blindly run every game forever. This one knows where the drops are.</p>
+      </div>
+      <div class="features">
+        <div class="card reveal"><div class="ic">🎴</div><h3>Drops only where it matters</h3><p>Detects which games have trading cards and how many drops remain — idles just those, never wasting a slot.</p></div>
+        <div class="card reveal"><div class="ic">🧠</div><h3>Learns over time</h3><p>A persistent no-drop cache records fully-farmed games and skips them forever. Each run scans less.</p></div>
+        <div class="card reveal"><div class="ic">🔐</div><h3>Accurate by design</h3><p>Verifies the Steam web session is genuinely logged in, and auto-recovers a valid session from your browser.</p></div>
+        <div class="card reveal"><div class="ic">🖥️</div><h3>Readable output</h3><p>Live panel of game names, cards remaining and idle time; structured report + JSON/Markdown checkpoints.</p></div>
+        <div class="card reveal"><div class="ic">🔁</div><h3>Two backends, one interface</h3><p>Built-in Python client (Guard / 2FA) or a local <code>steam-utility</code> install — with transparent fallback.</p></div>
+        <div class="card reveal"><div class="ic">⚡</div><h3>Modern &amp; tested</h3><p><code>uv</code>-managed, fully typed, 242 tests across Python 3.12–3.14. Green on every push.</p></div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section>
+      <div class="section-head">
+        <span class="eyebrow">How it works</span>
+        <h2>Architecture &amp; selection pipeline</h2>
+        <p>An orchestrator drives a swappable backend and three card services; game selection is a funnel.</p>
+      </div>
+      <figure class="figure">
+        <img src="{{ '/assets/architecture.svg' | relative_url }}" alt="System architecture diagram" />
+        <figcaption>Entry &amp; config → <strong>SteamIdleBot</strong> orchestrator → swappable backend + three card services → IdleTracker.</figcaption>
+      </figure>
+      <figure class="figure">
+        <img src="{{ '/assets/pipeline.svg' | relative_url }}" alt="Game selection pipeline diagram" />
+        <figcaption>Library → has-cards → drops-remaining → exclusions &amp; cap. Narrows to ≤ 32 idled games.</figcaption>
+      </figure>
+    </section>
+
+    <!-- Quick start -->
+    <section>
+      <div class="section-head">
+        <span class="eyebrow">Quick start</span>
+        <h2>Running in under a minute</h2>
+      </div>
+      <div class="codeblock">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+<pre><code><span class="cm"># install uv, clone &amp; sync</span>
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone https://github.com/bernardopg/steam-idler-python.git
+cd steam-idler-python && uv sync
+
+<span class="cm"># configure (never commit the filled .env)</span>
+cp .env.example .env   <span class="cm"># set USERNAME, PASSWORD, STEAM_API_KEY</span>
+
+<span class="ac">./run.sh --dry-run</span>     <span class="cm"># preview, no Steam contact</span>
+<span class="ac">./run.sh</span>               <span class="cm"># go — or ./run-gui.sh for the GUI</span></code></pre>
+      </div>
+    </section>
+
+    <!-- Docs -->
+    <section>
+      <div class="section-head">
+        <span class="eyebrow">Documentation</span>
+        <h2>Read in your language</h2>
+      </div>
+      <div class="lang-grid">
+        <div class="lang-card">
+          <h3>🇺🇸 English</h3>
+          <a href="{{ '/en/README.html' | relative_url }}">Full guide →</a>
+          <a href="{{ '/en/USAGE.html' | relative_url }}">Command sheet →</a>
+          <a href="{{ '/en/SECURITY.html' | relative_url }}">Security →</a>
+        </div>
+        <div class="lang-card">
+          <h3>🇧🇷 Português (BR)</h3>
+          <a href="{{ '/pt-br/README.html' | relative_url }}">Guia completo →</a>
+          <a href="{{ '/pt-br/USAGE.html' | relative_url }}">Comandos →</a>
+          <a href="{{ '/pt-br/SECURITY.html' | relative_url }}">Segurança →</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  {% include footer.html %}
+</body>
+</html>

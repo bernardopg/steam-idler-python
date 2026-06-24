@@ -1,0 +1,27 @@
+<footer>
+  <div class="container footer-inner">
+    <div>
+      <strong>Steam Idle Bot</strong> · MIT · not affiliated with Valve.
+    </div>
+    <div class="badge-row">
+      <span class="badge">Python 3.12+</span>
+      <span class="badge">242 tests</span>
+      <a class="badge" href="https://github.com/bernardopg/steam-idler-python">⭐ Star on GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var key = 'theme-preference';
+    var root = document.documentElement;
+    var get = function () { return localStorage.getItem(key) || 'auto'; };
+    var apply = function (m) { m === 'auto' ? root.removeAttribute('data-theme') : root.setAttribute('data-theme', m); };
+    apply(get());
+    var btn = document.getElementById('theme-toggle');
+    if (btn) btn.addEventListener('click', function () {
+      var c = get(); var n = c === 'dark' ? 'light' : c === 'light' ? 'auto' : 'dark';
+      localStorage.setItem(key, n); apply(n);
+    });
+  })();
+</script>

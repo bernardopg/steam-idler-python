@@ -1,9 +1,23 @@
-title: Steam Idle Bot Docs
+title: Steam Idle Bot
+description: Farm Steam playtime and trading-card drops on autopilot.
 markdown: kramdown
 theme: null
 baseurl: ""
 url: "https://idler.bebitterbebetter.com.br"
+
+# Default chrome for content pages (index.md overrides to the home layout).
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
 exclude:
+  # Stray duplicates kept only for the repo, not the built site.
+  - README.md
+  - USAGE.md
+  - idle-test-2026-06-23.md
+  # Never source application code into the site.
   - ../.github
   - ../tests
   - ../src
