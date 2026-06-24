@@ -2,13 +2,10 @@
 name: Deploy docs to Pages
 
 on:
-  # Deploy docs on pushes to main that touch docs/ or workflow itself
+  # Deploy docs on pushes to main that touch docs/ or the workflow itself.
+  # Pages deployment targets the protected `github-pages` environment, which only
+  # permits `main`, so this must NOT run on pull requests (it would fail instantly).
   push:
-    branches: ["main"]
-    paths:
-      - "docs/**"
-      - ".github/workflows/static.yml"
-  pull_request:
     branches: ["main"]
     paths:
       - "docs/**"
