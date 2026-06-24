@@ -2,8 +2,10 @@ title: Steam Idle Bot
 description: Farm Steam playtime and trading-card drops on autopilot.
 markdown: kramdown
 theme: null
-baseurl: ""
-url: "https://idler.bebitterbebetter.com.br"
+# Project page: site is served under /steam-idler-python, so baseurl must match
+# or every `relative_url` asset (CSS, SVGs, doc links) 404s at the domain root.
+baseurl: "/steam-idler-python"
+url: "https://bernardopg.github.io"
 
 # Default chrome for content pages (index.md overrides to the home layout).
 defaults:
