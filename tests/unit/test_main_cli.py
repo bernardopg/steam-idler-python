@@ -426,6 +426,10 @@ def test_main_applies_overrides(monkeypatch):
         max_checks=8,
         skip_failures=True,
         keep_completed_drops=True,
+        checkpoint_minutes=5,
+        duration_minutes=25,
+        post_run_verify_seconds=45,
+        stop_app_ids=None,
         dry_run=True,
     )
     parser = SimpleNamespace(parse_args=lambda: args)
@@ -453,6 +457,9 @@ def test_main_applies_overrides(monkeypatch):
     assert settings.max_checks == 8
     assert settings.skip_failures is True
     assert settings.filter_completed_card_drops is False
+    assert settings.checkpoint_minutes == 5
+    assert settings.duration_minutes == 25
+    assert settings.post_run_verify_seconds == 45
     assert state["dry_run"] is True
 
 
@@ -573,3 +580,65 @@ class patch_sys_exit:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+
+def test_parse_app_id_list_json_and_csv():
+    assert main_module._parse_app_id_list("[570, 730]") == [570, 730]
+    assert main_module._parse_app_id_list("570,730") == [570, 730]
+    assert main_module._parse_app_id_list("570; 730") == [570, 730]
+    assert main_module._parse_app_id_list("") == []
+
+
+def test_write_checkpoint_emits_json_and_md(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(main_module, "time", SimpleNamespace(strftime=lambda fmt: "20260101_010101", time=lambda: 0.0))
+    bot = _build_bot()
+    bot._idle_tracker.start_session([10, 20])
+    bot._idle_tracker.set_cards_before(10, 3)
+
+    bot._write_checkpoint(1, [10, 20])
+
+    base = tmp_path / "logs" / "checkpoints" / "checkpoint_001_20260101_010101"
+    assert base.with_suffix(".json").exists()
+    assert base.with_suffix(".md").exists()
+    import json as _json
+
+    data = _json.loads(base.with_suffix(".json").read_text())
+    assert data["checkpoint"]["sequence"] == 1
+    assert data["checkpoint"]["selected_games"] == [10, 20]
+    assert data["totals"]["games"] == 2
+
+
+def test_stop_app_ids_stops_matching_pids(monkeypatch, capsys):
+    from steam_idle_bot.steam import steam_utility
+
+    class Bridge:
+        def __init__(self, *a, **k):
+            pass
+
+        def find_idle_pids(self, proc_root="/proc"):
+            return {570: [111, 112], 730: [222]}
+
+    monkeypatch.setattr(steam_utility, "SteamUtilityBridge", Bridge)
+    killed = []
+    monkeypatch.setattr(steam_utility.SteamUtilityIdleClient, "_stop_pid", lambda self, pid: killed.append(pid))
+
+    count = main_module._stop_app_ids(make_settings(), [570])
+    assert count == 2
+    assert killed == [111, 112]
+    assert "Stopped 2" in capsys.readouterr().out
+
+
+def test_post_run_verification_recaptures(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    bot = _build_bot(make_settings(post_run_verify_seconds=5))
+    bot._games_to_idle = [10]
+    calls = {"capture": 0, "slept": []}
+    monkeypatch.setattr(bot, "_capture_final_cards", lambda: calls.__setitem__("capture", calls["capture"] + 1))
+    monkeypatch.setattr(bot.client, "sleep", lambda s: calls["slept"].append(s))
+    monkeypatch.setattr(bot._idle_tracker, "save_report", lambda p: None)
+
+    bot._show_session_report()
+
+    assert calls["capture"] == 2  # immediate + delayed
+    assert calls["slept"] == [5]

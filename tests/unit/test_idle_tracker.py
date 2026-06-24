@@ -116,3 +116,30 @@ def test_session_seconds_live_until_end_set(monkeypatch) -> None:
     monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: 760.0)
     assert tracker.session_seconds == 660.0
     assert tracker.session_minutes == 11.0
+
+
+def test_to_dict_structured_snapshot(monkeypatch):
+    tracker = IdleTracker()
+    times = iter([100.0, 400.0])
+    monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: next(times))
+    tracker.start_session([10, 20], game_names={10: "Alpha"})
+    tracker.set_cards_before(10, 5)
+    tracker.set_cards_after(10, 2)
+    tracker.set_cards_before(20, 1)
+    tracker.end_session()
+
+    snap = tracker.to_dict()
+    assert snap["session"]["seconds"] == 300.0
+    assert snap["totals"]["games"] == 2
+    assert snap["totals"]["cards_dropped"] == 3
+    assert snap["totals"]["games_unknown"] == 1
+    alpha = next(g for g in snap["games"] if g["app_id"] == 10)
+    assert alpha == {
+        "app_id": 10,
+        "name": "Alpha",
+        "cards_before": 5,
+        "cards_after": 2,
+        "cards_dropped": 3,
+        "drop_status_known": True,
+        "idle_minutes": 5.0,
+    }

@@ -261,6 +261,22 @@ class Settings(BaseSettings):
         default=False,
         description="Skip logging non-timeout errors during trading-card checks",
     )
+    checkpoint_minutes: int = Field(
+        default=0,
+        ge=0,
+        description="Write a JSON/Markdown checkpoint every N minutes while idling (0 disables)",
+    )
+    duration_minutes: int = Field(
+        default=0,
+        ge=0,
+        description="Stop idling after N minutes (0 runs until interrupted)",
+    )
+    post_run_verify_seconds: int = Field(
+        default=0,
+        ge=0,
+        le=600,
+        description="Re-scrape card counts this many seconds after stopping, to catch lagging badge updates (0 disables)",
+    )
 
     # Security
     enable_encryption: bool = Field(default=False, description="Enable encryption for stored credentials")
@@ -424,6 +440,9 @@ class Settings(BaseSettings):
             "browser_cookies_browser": "BROWSER_COOKIES_BROWSER",
             "max_checks": "MAX_CHECKS",
             "skip_failures": "SKIP_FAILURES",
+            "checkpoint_minutes": "CHECKPOINT_MINUTES",
+            "duration_minutes": "DURATION_MINUTES",
+            "post_run_verify_seconds": "POST_RUN_VERIFY_SECONDS",
             "enable_encryption": "ENABLE_ENCRYPTION",
         }
 
