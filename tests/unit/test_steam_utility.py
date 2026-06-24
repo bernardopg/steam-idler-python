@@ -100,6 +100,18 @@ def test_login_reads_active_steam_user_from_state_report():
     assert client.username == "bot-user"
 
 
+def test_login_masks_account_name_in_logs(caplog):
+    bridge = FakeBridge()
+    client = SteamUtilityIdleClient(make_settings(), bridge=bridge)
+
+    with caplog.at_level("INFO"):
+        assert client.login() is True
+
+    messages = " ".join(r.getMessage() for r in caplog.records)
+    assert "bot-user" not in messages
+    assert "bot***r" in messages
+
+
 def test_login_reads_pascal_case_state_report_fields():
     bridge = FakeBridge()
     bridge.report = {

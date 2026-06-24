@@ -15,17 +15,16 @@ from ..utils.exceptions import (
     SteamAuthenticationError,
     SteamConnectionError,
 )
+from ..utils.redaction import mask_username
 
 logger = logging.getLogger(__name__)
 
 AuthCodeProvider = Callable[[bool, bool], str | None]
 
 
-def _mask_username(username: str | None) -> str:
-    """Mask a username for safe logging (e.g. 'ste***bot')."""
-    if not username or len(username) <= 3:
-        return "***"
-    return f"{username[:3]}***{username[-1]}"
+# Backwards-compatible alias; the canonical helper now lives in utils.redaction
+# so both idling backends mask account names consistently.
+_mask_username = mask_username
 
 
 class SteamClientWrapper:
