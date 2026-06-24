@@ -71,13 +71,7 @@ def preflight_warnings(
     warnings: list[str] = []
     running = is_steam_running(proc_root)
     if running is False:
-        warnings.append(
-            "Steam does not appear to be running; the steam_utility backend needs "
-            "a logged-in Steam client to idle games."
-        )
+        warnings.append("Steam does not appear to be running; the steam_utility backend needs a logged-in Steam client to idle games.")
         if not has_graphical_session(env):
-            warnings.append(
-                "No graphical session detected (DISPLAY/WAYLAND_DISPLAY unset); "
-                "Steam cannot be launched automatically from this shell."
-            )
+            warnings.append("No graphical session detected (DISPLAY/WAYLAND_DISPLAY unset); Steam cannot be launched automatically from this shell.")
     return warnings

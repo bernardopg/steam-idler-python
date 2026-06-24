@@ -515,6 +515,11 @@ def test_main_gui_launches_without_loading_settings(monkeypatch):
             max_checks=None,
             skip_failures=False,
             keep_completed_drops=False,
+            refresh_interval_seconds=None,
+            checkpoint_minutes=None,
+            duration_minutes=None,
+            post_run_verify_seconds=None,
+            stop_app_ids=None,
             dry_run=False,
         )
     )
@@ -522,14 +527,73 @@ def test_main_gui_launches_without_loading_settings(monkeypatch):
     launched = {}
 
     monkeypatch.setattr(main_module, "create_parser", lambda: parser)
-    monkeypatch.setattr(
-        "steam_idle_bot.gui.launch_gui",
-        lambda config_path=None: launched.setdefault("path", config_path),
-    )
+
+    def fake_launch_gui(config_path=None, *, initial_settings=None, initial_dry_run=False):
+        launched["path"] = config_path
+        launched["settings"] = initial_settings
+        launched["dry_run"] = initial_dry_run
+
+    monkeypatch.setattr("steam_idle_bot.gui.launch_gui", fake_launch_gui)
 
     main()
 
     assert launched["path"] == "cfg.py"
+    assert launched["settings"] is None
+    assert launched["dry_run"] is False
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("tkinter"),
+    reason="tkinter not installed",
+)
+def test_main_gui_receives_cli_overrides(monkeypatch):
+    args = SimpleNamespace(
+        gui=True,
+        config=None,
+        no_trading_cards=True,
+        max_games=4,
+        refresh_interval_seconds=120,
+        no_cache=True,
+        max_checks=8,
+        skip_failures=True,
+        keep_completed_drops=True,
+        checkpoint_minutes=5,
+        duration_minutes=25,
+        post_run_verify_seconds=45,
+        stop_app_ids=None,
+        dry_run=True,
+    )
+    parser = SimpleNamespace(parse_args=lambda: args)
+    launched = {}
+
+    monkeypatch.setattr(main_module, "create_parser", lambda: parser)
+    monkeypatch.setattr(
+        main_module.Settings,
+        "load_from_file",
+        classmethod(lambda cls, config_path=None: make_settings()),
+    )
+
+    def fake_launch_gui(config_path=None, *, initial_settings=None, initial_dry_run=False):
+        launched["path"] = config_path
+        launched["settings"] = initial_settings
+        launched["dry_run"] = initial_dry_run
+
+    monkeypatch.setattr("steam_idle_bot.gui.launch_gui", fake_launch_gui)
+
+    main()
+
+    settings = launched["settings"]
+    assert settings.filter_trading_cards is False
+    assert settings.max_games_to_idle == 4
+    assert settings.refresh_interval_seconds == 120
+    assert settings.enable_card_cache is False
+    assert settings.max_checks == 8
+    assert settings.skip_failures is True
+    assert settings.filter_completed_card_drops is False
+    assert settings.checkpoint_minutes == 5
+    assert settings.duration_minutes == 25
+    assert settings.post_run_verify_seconds == 45
+    assert launched["dry_run"] is True
 
 
 def test_dunder_main_executes_main(monkeypatch):

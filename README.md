@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12%2B-66c0f4.svg" alt="Python 3.12+"></a>
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/managed%20by-uv-a3cf06.svg" alt="uv-managed"></a>
-  <img src="https://img.shields.io/badge/tests-242%20passing-2ea043.svg" alt="242 tests passing">
+  <img src="https://img.shields.io/badge/tests-420%20passing-2ea043.svg" alt="420 tests passing">
   <img src="https://img.shields.io/badge/typed-mypy%20clean-66c0f4.svg" alt="mypy clean">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c7d5e0.svg" alt="MIT license"></a>
   <a href="docs/en/README.md"><img src="https://img.shields.io/badge/docs-EN-blue" alt="English docs"></a>
@@ -30,7 +30,7 @@ Most idlers blindly run every game forever. Steam Idle Bot is **accurate and sel
 | 🔐 **Accurate by design** | Verifies the Steam web session is *genuinely* logged in before trusting it; auto-recovers a valid session from a browser you're signed into. |
 | 🖥️ **Readable output** | Live panel of game names, cards remaining and idle time; structured session report + optional JSON/Markdown checkpoints. |
 | 🔁 **Two backends, one interface** | Built-in Python client (Steam Guard / 2FA) **or** a local `steam-utility` install — with transparent fallback if one fails. |
-| ⚡ **Modern & tested** | `uv`-managed, fully typed, 242 tests across Python 3.12–3.14. |
+| ⚡ **Modern & tested** | `uv`-managed, fully typed, 420 tests across Python 3.12–3.14. |
 
 ---
 

@@ -53,6 +53,7 @@ class SteamIdleBot:
         self._games_to_idle: list[int] = []
         self._steam_id: str | None = None
         self._stop_event = threading.Event()
+        self._force_stop_event = threading.Event()
         self._last_report = ""
         self.report_callback: Callable[[str], None] | None = None
 
@@ -140,6 +141,7 @@ class SteamIdleBot:
             steam_id = self._resolve_active_steam_id()
 
         self._stop_event.clear()
+        self._force_stop_event.clear()
         self._print_status_panel(games)
         self._main_loop(games, steam_id=steam_id)
 
@@ -193,11 +195,15 @@ class SteamIdleBot:
 
                     if new_games != games:
                         self.logger.info(f"Updating games from {len(games)} to {len(new_games)}")
+                        game_names = self._game_name_map()
+                        for app_id in new_games:
+                            if app_id not in self._games_to_idle:
+                                self._games_to_idle.append(app_id)
                         games = new_games
                         self.client.refresh_games(games)
-                        self._idle_tracker.game_names.update(self._game_name_map())
+                        self._idle_tracker.update_games(games, game_names)
 
-                    self._print_status_panel(games)
+                        self._print_status_panel(games)
                     last_refresh = now
 
                 # Check connection
@@ -259,6 +265,8 @@ class SteamIdleBot:
         ``KeyboardInterrupt``) shut the bot down gracefully — e.g. when
         ``run.sh`` is terminated — rather than killing it before the report.
         """
+        if self._stop_event.is_set():
+            self._force_stop_event.set()
         self._stop_event.set()
 
     def _game_name_map(self) -> dict[int, str]:
@@ -361,8 +369,12 @@ class SteamIdleBot:
 
             # Fallback/augment: re-scrape idled games to read current counts so the
             # session report can show how many cards dropped while idling.
-            if self._games_to_idle and self._steam_id and hasattr(self.game_manager, "fetch_drop_counts"):
-                counts = self.game_manager.fetch_drop_counts(self._games_to_idle, self._steam_id)
+            if not self._force_stop_event.is_set() and self._games_to_idle and self._steam_id and hasattr(self.game_manager, "fetch_drop_counts"):
+                counts = self.game_manager.fetch_drop_counts(
+                    self._games_to_idle,
+                    self._steam_id,
+                    should_stop=self._force_stop_event.is_set,
+                )
                 if counts is not None:
                     authenticated_read = True
                     for app_id, count in counts.items():
@@ -417,7 +429,7 @@ class SteamIdleBot:
         # Optionally re-scrape after a delay: Steam badge pages can lag behind
         # the actual drops at the moment idling stops.
         delay = self.settings.post_run_verify_seconds
-        if delay > 0 and self._games_to_idle:
+        if delay > 0 and self._games_to_idle and not self._force_stop_event.is_set():
             self.logger.info("Re-verifying card counts in %ds (post-run verification)...", delay)
             self.client.sleep(delay)
             with contextlib.suppress(Exception):
@@ -725,61 +737,83 @@ def _install_signal_handlers(bot: SteamIdleBot) -> None:
             signal.signal(sig, _handler)
 
 
+def _load_settings_from_args(args: argparse.Namespace) -> Settings:
+    """Load settings and apply CLI overrides shared by terminal and GUI modes."""
+    settings_path = Path(args.config) if args.config else None
+    settings = Settings.load_from_file(settings_path)
+    _apply_cli_overrides(settings, args)
+    return settings
+
+
+def _apply_cli_overrides(settings: Settings, args: argparse.Namespace) -> None:
+    """Apply parser overrides to a Settings instance."""
+    if args.no_trading_cards:
+        settings.filter_trading_cards = False
+
+    if args.max_games:
+        settings.max_games_to_idle = args.max_games
+
+    if args.refresh_interval_seconds is not None:
+        settings.refresh_interval_seconds = args.refresh_interval_seconds
+
+    if args.no_cache:
+        settings.enable_card_cache = False
+
+    if args.max_checks is not None:
+        settings.max_checks = args.max_checks
+
+    if args.skip_failures:
+        settings.skip_failures = True
+
+    if args.keep_completed_drops:
+        settings.filter_completed_card_drops = False
+
+    if args.checkpoint_minutes is not None:
+        settings.checkpoint_minutes = args.checkpoint_minutes
+
+    if args.duration_minutes is not None:
+        settings.duration_minutes = args.duration_minutes
+
+    if args.post_run_verify_seconds is not None:
+        settings.post_run_verify_seconds = args.post_run_verify_seconds
+
+
 def main() -> None:
     """Main entry point."""
     parser = create_parser()
     args = parser.parse_args()
 
     try:
-        if args.gui:
+        if args.gui and not getattr(args, "stop_app_ids", None):
             from .gui import launch_gui
 
-            launch_gui(config_path=args.config)
+            try:
+                settings = _load_settings_from_args(args)
+            except Exception:
+                settings = None
+            launch_gui(
+                config_path=args.config,
+                initial_settings=settings,
+                initial_dry_run=args.dry_run,
+            )
             return
 
-        # Load settings
-        settings_path = None
-        if args.config:
-            from pathlib import Path
-
-            settings_path = Path(args.config)
-        settings = Settings.load_from_file(settings_path)
+        settings = _load_settings_from_args(args)
 
         # Maintenance mode: stop idles for specific App IDs and exit.
         if args.stop_app_ids:
             _stop_app_ids(settings, _parse_app_id_list(args.stop_app_ids))
             return
 
-        # Override settings from command line
-        if args.no_trading_cards:
-            settings.filter_trading_cards = False
+        if args.gui:
+            from .gui import launch_gui
 
-        if args.max_games:
-            settings.max_games_to_idle = args.max_games
-
-        if args.refresh_interval_seconds is not None:
-            settings.refresh_interval_seconds = args.refresh_interval_seconds
-
-        if args.no_cache:
-            settings.enable_card_cache = False
-
-        if args.max_checks is not None:
-            settings.max_checks = args.max_checks
-
-        if args.skip_failures:
-            settings.skip_failures = True
-
-        if args.keep_completed_drops:
-            settings.filter_completed_card_drops = False
-
-        if args.checkpoint_minutes is not None:
-            settings.checkpoint_minutes = args.checkpoint_minutes
-
-        if args.duration_minutes is not None:
-            settings.duration_minutes = args.duration_minutes
-
-        if args.post_run_verify_seconds is not None:
-            settings.post_run_verify_seconds = args.post_run_verify_seconds
+            launch_gui(
+                config_path=args.config,
+                initial_settings=settings,
+                initial_dry_run=args.dry_run,
+            )
+            return
 
         # Create and run bot
         bot = SteamIdleBot(settings)

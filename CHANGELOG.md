@@ -8,6 +8,12 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
+- GUI: **dark theme** — full Tokyo Night-inspired dark palette across all widgets (inputs, treeview, tabs, scrollbars, console, report, badges). Log lines color-coded by level (INFO/WARNING/ERROR/DEBUG/SUCCESS).
+- GUI: **keyboard shortcuts** — `Ctrl+Enter` start, `Escape` stop, `Ctrl+L` clear logs, `Ctrl+S` save settings.
+- GUI: **auto-scroll toggle** and **clear buttons** for both Live Logs and Session Report tabs.
+- GUI: all CLI flags now have GUI equivalents — `Keep completed drops`, `Dry run`, `Stop App IDs` maintenance, `Log Level`, `Log File`.
+- GUI: **171 tests** covering construction, settings loading/building, status badges, log/report operations, UI events, auth requests, status panel updates, start/stop lifecycle, collapsible sections, keyboard shortcuts, mousewheel scrolling, and the bot worker thread.
+
 - CLI/config: **checkpoint report mode** — `--checkpoint-minutes N` (`CHECKPOINT_MINUTES`)
   writes a structured JSON + Markdown snapshot of the live session (selected games, card
   counts, drops, durations, totals) to `logs/checkpoints/` every N minutes; `--duration-minutes`
@@ -46,6 +52,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Changed
 
+- GUI: complete **UI overhaul** — dark theme replacing light palette, reorganized form with collapsible sections (no emoji prefixes), horizontal button row (Start | Stop | Save), themed Treeview status panel, and consistent dark treatment across all widgets.
 - Drops: card-drop scraping only re-checks games that still had drops plus new games;
   per-game scrape/badge log spam moved to `DEBUG`, with concise summaries and scan progress.
 - Docs (EN/PT-BR): rewritten for clarity — added Authentication & card-drop accuracy guide,
@@ -54,6 +61,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   accepted protobuf advisories.
 
 ### Fixed
+
+- **Main loop `UnboundLocalError`**: `new_games` was referenced outside its `if now - last_refresh` block, causing `cannot access local variable 'new_games'` errors every ~31 seconds until the first refresh interval triggered. Moved the game-comparison logic inside the refresh block.
+- Idle tracker: `update_games()` now properly accumulates idle time when games are added/removed mid-session, and `end_session()` uses `stop_game()` for consistent timing.
 
 - Card-drop filtering no longer idles fully-farmed games (or misses games with real drops)
   when the web session is not genuinely authenticated against `steamcommunity.com`.

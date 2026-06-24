@@ -21,6 +21,7 @@ class GameIdleInfo:
     name: str = ""
     start_time: float | None = None
     end_time: float | None = None
+    accumulated_seconds: float = 0.0
     cards_before: int | None = None
     cards_after: int | None = None
 
@@ -45,9 +46,12 @@ class GameIdleInfo:
         instead of a frozen ``0``.
         """
         if self.start_time is None:
-            return 0.0
-        end = self.end_time if self.end_time is not None else time.time()
-        return max(0.0, end - self.start_time)
+            return self.accumulated_seconds
+        if self.end_time is not None:
+            if self.accumulated_seconds:
+                return self.accumulated_seconds
+            return max(0.0, self.end_time - self.start_time)
+        return self.accumulated_seconds + max(0.0, time.time() - self.start_time)
 
     @property
     def idle_minutes(self) -> float:
@@ -85,11 +89,50 @@ class IdleTracker:
             self.games[app_id] = game
         self.logger.info(f"Idle tracker started for {len(game_ids)} games")
 
+    def update_games(self, game_ids: list[int], game_names: dict[int, str] | None = None) -> None:
+        """Track games added to or removed from the active idling set."""
+        now = time.time()
+        if game_names:
+            self.game_names.update(game_names)
+
+        active_ids = set(game_ids)
+        for app_id, game in self.games.items():
+            if app_id not in active_ids and game.start_time is not None and game.end_time is None:
+                self.stop_game(app_id, now=now)
+
+        for app_id in game_ids:
+            if app_id not in self.games:
+                game = GameIdleInfo(
+                    app_id=app_id,
+                    name=self.game_names.get(app_id, ""),
+                    start_time=now,
+                )
+                if app_id in self._pending_cards_before:
+                    game.cards_before = self._pending_cards_before[app_id]
+                if app_id in self._pending_cards_after:
+                    game.cards_after = self._pending_cards_after[app_id]
+                self.games[app_id] = game
+            elif self.games[app_id].end_time is not None:
+                self.games[app_id].start_time = now
+                self.games[app_id].end_time = None
+
+    def stop_game(self, app_id: int, *, now: float | None = None) -> None:
+        """Stop timing a single game without ending the whole session."""
+        game = self.games.get(app_id)
+        if game is None or game.start_time is None or game.end_time is not None:
+            return
+
+        stopped_at = time.time() if now is None else now
+        game.accumulated_seconds += max(0.0, stopped_at - game.start_time)
+        game.start_time = None
+        game.end_time = stopped_at
+
     def end_session(self) -> None:
         """Record the end of an idling session."""
         self.session_end = time.time()
         for game in self.games.values():
-            game.end_time = self.session_end
+            if game.start_time is not None and game.end_time is None:
+                self.stop_game(game.app_id, now=self.session_end)
         self.logger.info(f"Idle tracker stopped, session duration: {self.session_minutes:.1f} minutes")
 
     def set_cards_before(self, app_id: int, count: int) -> None:

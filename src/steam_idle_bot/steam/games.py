@@ -1,6 +1,7 @@
 # isort: skip_file
 """Game library management and filtering."""
 
+from collections.abc import Callable
 import logging
 
 import requests
@@ -292,11 +293,20 @@ class GameManager:
         """Cards-remaining counts gathered by the scraper during the last filtering pass."""
         return dict(getattr(self.card_drop_checker, "drop_counts", {}))
 
-    def fetch_drop_counts(self, app_ids: list[int], steam_id: str | None) -> dict[int, int]:
+    def fetch_drop_counts(
+        self,
+        app_ids: list[int],
+        steam_id: str | None,
+        *,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> dict[int, int]:
         """Re-scrape the given games to read their current cards-remaining counts."""
         if not steam_id or not app_ids:
             return {}
         for app_id in app_ids:
+            if should_stop is not None and should_stop():
+                logger.info("Stopped card-count refresh early")
+                break
             try:
                 self.card_drop_checker.has_remaining_drops(app_id, steam_id)
             except Exception as err:  # noqa: BLE001 - best-effort count refresh

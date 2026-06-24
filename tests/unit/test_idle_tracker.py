@@ -73,6 +73,20 @@ def test_idle_tracker_applies_pending_card_updates_when_session_starts() -> None
     assert tracker.games[10].cards_after == 2
 
 
+def test_idle_tracker_update_games_stops_removed_games(monkeypatch) -> None:
+    tracker = IdleTracker()
+
+    times = iter([100.0, 160.0, 220.0])
+    monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: next(times))
+
+    tracker.start_session([10, 20], game_names={10: "Active", 20: "Drained"})
+    tracker.update_games([10])
+    tracker.end_session()
+
+    assert tracker.games[10].idle_seconds == 120.0
+    assert tracker.games[20].idle_seconds == 60.0
+
+
 def test_idle_tracker_reports_unknown_drop_status_separately(tmp_path, monkeypatch) -> None:
     tracker = IdleTracker()
 

@@ -76,7 +76,7 @@ The three services are distinct: `TradingCardDetector` = *does this game have ca
 `_main_loop()` sleeps in 1s ticks (keeps GUI `stop()` responsive), re-runs the selection pipeline every 10 min, and reconnects on dropped connections (with steam_utility fallback). `IdleTracker` (`utils/idle_tracker.py`) snapshots cards-remaining before/after to compute drops, and writes a session report to `logs/idle_report_*.txt`. `DetailedLogger` (`utils/detailed_logger.py`) dumps per-stage JSON to `logs/`.
 
 ### GUI
-`gui.py` (`SteamIdleBotGUI`) runs the bot on a worker thread, routes logs through a `QueueLogHandler`, handles Steam Guard code requests via dialogs, and persists settings with `save_to_env_file()`.
+`gui.py` (`SteamIdleBotGUI`) runs the bot on a worker thread, routes logs through a `QueueLogHandler`, handles Steam Guard code requests via dialogs, and persists settings with `save_to_env_file()`. Dark-themed (Tokyo Night palette) with collapsible form sections, color-coded log output (INFO/WARNING/ERROR/DEBUG/SUCCESS tags), auto-scroll toggle, and keyboard shortcuts (`Ctrl+Enter` start, `Escape` stop, `Ctrl+L` clear logs, `Ctrl+S` save settings). All CLI flags have GUI equivalents including `Keep completed drops`, `Dry run`, and `Stop App IDs` maintenance.
 
 ## Conventions
 
