@@ -1,53 +1,86 @@
-# Simple workflow for deploying static content to GitHub Pages
+# Build and deploy the documentation site to GitHub Pages.
 name: Deploy docs to Pages
 
 on:
-  # Deploy docs on pushes to main that touch docs/ or the workflow itself.
-  # Pages deployment targets the protected `github-pages` environment, which only
-  # permits `main`, so this must NOT run on pull requests (it would fail instantly).
+  # On pushes to main, build AND deploy. On pull requests, only build (validation):
+  # the protected github-pages environment permits `main` only, so the deploy job
+  # is skipped on PRs while the build job still catches broken layouts/assets.
   push:
     branches: ["main"]
     paths:
       - "docs/**"
       - ".github/workflows/static.yml"
-  # Allows you to run this workflow manually from the Actions tab
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "docs/**"
+      - ".github/workflows/static.yml"
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Least privilege: only the deploy job needs pages/id-token.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# One deployment at a time; let in-flight production deploys finish.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Build docs (Jekyll) and deploy
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # ---- Build the static site and validate the output ----
+  build:
+    name: Build site
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
       - name: Setup Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
       - name: Build site with Jekyll
         uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
         with:
           source: ./docs
           destination: ./_site
+
+      - name: Validate build output
+        run: |
+          set -euo pipefail
+          test -f ./_site/index.html || { echo "::error::index.html missing from build"; exit 1; }
+          for asset in banner.svg architecture.svg pipeline.svg css/style.css; do
+            test -f "./_site/assets/$asset" || { echo "::error::missing asset: $asset"; exit 1; }
+          done
+          pages=$(find ./_site -name '*.html' | wc -l)
+          size=$(du -sh ./_site | cut -f1)
+          {
+            echo "### 📄 Docs site built"
+            echo ""
+            echo "- **HTML pages:** $pages"
+            echo "- **Total size:** $size"
+            echo "- **Assets verified:** banner · architecture · pipeline · stylesheet"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: "./_site"
+
+  # ---- Deploy the built artifact to GitHub Pages (main only) ----
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        if: github.ref == 'refs/heads/main'
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
