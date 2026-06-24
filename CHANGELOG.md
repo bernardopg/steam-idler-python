@@ -52,6 +52,17 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Changed
 
+- GUI/UX: **dropdowns for fixed-choice fields** — Backend, Log Level and Browser are now
+  read-only `ttk.Combobox`es instead of free-text entries, so typos can no longer fail the
+  Start with a validation error.
+- GUI/UX: **one clear card-filter control** — the contradictory "Filter completed drops" +
+  "Keep completed drops" checkboxes were merged into a single "Skip already-farmed games
+  (no drops left)" toggle, removing the confusing inverse-of-an-inverse logic.
+- GUI/UX: **live card counts** in the Status Panel — the "Cards Left" column now shows the
+  most recent count (`cards_after`) while idling, falling back to the start-of-session count.
+- GUI/UX: **polish** — numeric fields reject non-numeric input as you type; per-field hover
+  tooltips explain every setting; a "Show password" toggle; the Dry-run option sits right
+  above Start (no longer buried in a collapsed section); the window centers itself on launch.
 - GUI: complete **UI overhaul** — dark theme replacing light palette, reorganized form with collapsible sections (no emoji prefixes), horizontal button row (Start | Stop | Save), themed Treeview status panel, and consistent dark treatment across all widgets.
 - Drops: card-drop scraping only re-checks games that still had drops plus new games;
   per-game scrape/badge log spam moved to `DEBUG`, with concise summaries and scan progress.
@@ -62,6 +73,16 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Fixed
 
+- **Tests: hanging `_main_loop` suite** — three `test_main_extra.py` loop tests patched
+  `time.sleep` to break the loop, but `_main_loop` sleeps via `self.client.sleep()`; the
+  no-op `DummyClient.sleep` never set the stop event, so the loop span forever (the whole
+  pytest run froze). The tests now drive the stop through `client.sleep`.
+- **Tests: env-dependent `steam_utility` failures** — `TestRunJsonCommand` mocked
+  `subprocess.run` but `run_json_command` first resolves the project root by filesystem
+  autodiscovery, so the tests passed locally (sibling `steam-utility-multiplataform` repo
+  present) yet failed in CI. They now stub `bridge._project_root`.
+- Tooling: cleaned lint in the new `*_extra` test files and `gitignore`s rotated log
+  backups (`*.log.*`) and local `.claude/` settings.
 - **Main loop `UnboundLocalError`**: `new_games` was referenced outside its `if now - last_refresh` block, causing `cannot access local variable 'new_games'` errors every ~31 seconds until the first refresh interval triggered. Moved the game-comparison logic inside the refresh block.
 - Idle tracker: `update_games()` now properly accumulates idle time when games are added/removed mid-session, and `end_session()` uses `stop_game()` for consistent timing.
 

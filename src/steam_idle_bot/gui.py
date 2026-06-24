@@ -20,6 +20,21 @@ from .main import SteamIdleBot, _stop_app_ids
 
 APP_LOGGER_NAME = "steam_idle_bot"
 
+BACKEND_CHOICES = ("python", "steam_utility")
+LOG_LEVEL_CHOICES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+BROWSER_CHOICES = ("auto", "chrome", "firefox", "edge", "brave", "chromium", "opera", "vivaldi", "librewolf")
+
+
+def _is_number_input(proposed: str) -> bool:
+    """Tk key-validation: allow only an empty field or a non-negative number."""
+    if proposed in ("", "."):
+        return True
+    try:
+        return float(proposed) >= 0
+    except ValueError:
+        return False
+
+
 PALETTE = {
     "bg": "#1a1b26",
     "surface": "#24283b",
@@ -99,6 +114,45 @@ class AuthCodeRequest:
     code: str | None = None
 
 
+class _ToolTip:
+    """Lightweight hover tooltip for any Tk widget."""
+
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self.widget = widget
+        self.text = text
+        self._tip: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _show(self, _event: tk.Event | None = None) -> None:
+        if self._tip or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 12
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self._tip = tip = tk.Toplevel(self.widget)
+        tip.wm_overrideredirect(True)
+        tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(
+            tip,
+            text=self.text,
+            justify="left",
+            bg=PALETTE["overlay"],
+            fg=PALETTE["text_bright"],
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=4,
+            wraplength=320,
+        ).pack()
+
+    def _hide(self, _event: tk.Event | None = None) -> None:
+        if self._tip is not None:
+            with suppress(tk.TclError):
+                self._tip.destroy()
+            self._tip = None
+
+
 class SteamIdleBotGUI:
     """Desktop window for configuring and running the bot."""
 
@@ -168,7 +222,6 @@ class SteamIdleBotGUI:
         self.skip_failures_var = tk.BooleanVar(value=False)
         self.enable_encryption_var = tk.BooleanVar(value=False)
         self.dry_run_var = tk.BooleanVar(value=initial_dry_run)
-        self.keep_completed_drops_var = tk.BooleanVar(value=False)
 
         self.title_font = self._pick_font(("Aptos Display", "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", "Helvetica"))
         self.ui_font = self._pick_font(("Aptos", "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", "Helvetica"))
@@ -182,6 +235,19 @@ class SteamIdleBotGUI:
         self._poll_ui_queue()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._bind_keyboard_shortcuts()
+        self._center_window()
+
+    def _center_window(self) -> None:
+        """Place the window in the middle of the screen on launch."""
+        with suppress(tk.TclError):
+            self.root.update_idletasks()
+            width = self.root.winfo_width() or 1280
+            height = self.root.winfo_height() or 820
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            x = max(0, (screen_w - width) // 2)
+            y = max(0, (screen_h - height) // 3)
+            self.root.geometry(f"+{x}+{y}")
 
     @staticmethod
     def _pick_font(candidates: tuple[str, ...]) -> str:
@@ -331,6 +397,33 @@ class SteamIdleBotGUI:
             "App.TCheckbutton",
             indicatorcolor=[("selected", P["accent"]), ("active", P["accent_muted"])],
         )
+
+        self.style.configure(
+            "App.TCombobox",
+            fieldbackground=P["input_bg"],
+            background=P["overlay"],
+            foreground=P["input_fg"],
+            arrowcolor=P["accent"],
+            bordercolor=P["border"],
+            lightcolor=P["border"],
+            darkcolor=P["border"],
+            selectbackground=P["accent_muted"],
+            selectforeground=P["text"],
+            padding=(8, 6),
+        )
+        self.style.map(
+            "App.TCombobox",
+            fieldbackground=[("readonly", P["input_bg"]), ("focus", P["overlay"])],
+            foreground=[("readonly", P["input_fg"])],
+            bordercolor=[("focus", P["border_focus"])],
+            lightcolor=[("focus", P["border_focus"])],
+            darkcolor=[("focus", P["border_focus"])],
+        )
+        # Drop-down listbox (a classic Tk widget, not themed by ttk).
+        self.root.option_add("*TCombobox*Listbox.background", P["surface_alt"])
+        self.root.option_add("*TCombobox*Listbox.foreground", P["text"])
+        self.root.option_add("*TCombobox*Listbox.selectBackground", P["accent_muted"])
+        self.root.option_add("*TCombobox*Listbox.selectForeground", P["text_bright"])
 
         self.style.configure(
             "App.TNotebook",
@@ -531,25 +624,33 @@ class SteamIdleBotGUI:
         row = 0
 
         steam_frame = self._create_collapsible_section(parent, row=row, title="Steam Access", default_open=True, top_padding=0)
-        self._add_labeled_entry(steam_frame, 0, "Username", self.username_var)
-        self._add_labeled_entry(steam_frame, 1, "Password", self.password_var, show="*")
-        self._add_labeled_entry(steam_frame, 2, "API Key (optional)", self.api_key_var, show="*")
+        self._add_labeled_entry(steam_frame, 0, "Username", self.username_var, hint="Your Steam account login name.")
+        password_entry = self._add_labeled_entry(steam_frame, 1, "Password", self.password_var, show="*", hint="Only stored locally in .env when you Save; only sent to Steam.")
+        self.show_password_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            steam_frame,
+            text="Show password",
+            variable=self.show_password_var,
+            style="App.TCheckbutton",
+            command=lambda: password_entry.configure(show="" if self.show_password_var.get() else "*"),
+        ).grid(row=2, column=1, sticky="w", pady=(0, 4))
+        self._add_labeled_entry(steam_frame, 3, "API Key (optional)", self.api_key_var, show="*", hint="Steam Web API key — enables the owned-games and badge APIs (fewer page scrapes).")
         row += 1
 
         behavior_frame = self._create_collapsible_section(parent, row=row, title="Session Behavior", default_open=True)
-        self._add_labeled_entry(behavior_frame, 0, "Max Games", self.max_games_var)
-        self._add_labeled_entry(behavior_frame, 1, "Refresh Interval (sec)", self.refresh_interval_var)
-        self._add_labeled_entry(behavior_frame, 2, "Duration (min, 0=unlimited)", self.duration_minutes_var)
-        self._add_labeled_entry(behavior_frame, 3, "Checkpoint (min, 0=off)", self.checkpoint_minutes_var)
-        self._add_labeled_entry(behavior_frame, 4, "Post-run Verify (sec)", self.post_run_verify_seconds_var)
-        self._add_labeled_entry(behavior_frame, 5, "Max Checks", self.max_checks_var)
+        self._add_labeled_entry(behavior_frame, 0, "Max Games", self.max_games_var, numeric=True, hint="How many games to idle at once (Steam hard limit is 32).")
+        self._add_labeled_entry(behavior_frame, 1, "Refresh Interval (sec)", self.refresh_interval_var, numeric=True, hint="How often the game-selection pipeline re-runs while idling (min 10).")
+        self._add_labeled_entry(behavior_frame, 2, "Duration (min, 0=unlimited)", self.duration_minutes_var, numeric=True, hint="Stop idling after this many minutes. 0 keeps running until you stop it.")
+        self._add_labeled_entry(behavior_frame, 3, "Checkpoint (min, 0=off)", self.checkpoint_minutes_var, numeric=True, hint="Write a JSON/Markdown snapshot of the live session every N minutes.")
+        self._add_labeled_entry(behavior_frame, 4, "Post-run Verify (sec)", self.post_run_verify_seconds_var, numeric=True, hint="Re-scrape card counts N seconds after stopping (badge pages lag behind real drops).")
+        self._add_labeled_entry(behavior_frame, 5, "Max Checks", self.max_checks_var, numeric=True, hint="Cap how many games get card-checked per run. Blank = no cap.")
         row += 1
 
         backend_frame = self._create_collapsible_section(parent, row=row, title="Idle Backend", default_open=False)
-        self._add_labeled_entry(backend_frame, 0, "Backend (python / steam_utility)", self.idling_backend_var)
-        self._add_labeled_entry(backend_frame, 1, "steam-utility Path", self.steam_utility_path_var)
-        self._add_labeled_entry(backend_frame, 2, "API Timeout (sec)", self.api_timeout_var)
-        self._add_labeled_entry(backend_frame, 3, "Rate Limit Delay (sec)", self.rate_limit_var)
+        self._add_labeled_combobox(backend_frame, 0, "Backend", self.idling_backend_var, BACKEND_CHOICES, hint="python = built-in Steam client; steam_utility = external native idler.")
+        self._add_labeled_entry(backend_frame, 1, "steam-utility Path", self.steam_utility_path_var, hint="Path to the steam-utility-multiplataform repo (auto-discovered if blank).")
+        self._add_labeled_entry(backend_frame, 2, "API Timeout (sec)", self.api_timeout_var, numeric=True, hint="HTTP timeout for Steam Web API / scraping requests.")
+        self._add_labeled_entry(backend_frame, 3, "Rate Limit Delay (sec)", self.rate_limit_var, numeric=True, hint="Pause between scrape requests to stay under Steam rate limits.")
         row += 1
 
         selection_frame = self._create_collapsible_section(parent, row=row, title="Game Selection", default_open=False)
@@ -559,34 +660,32 @@ class SteamIdleBotGUI:
 
         cache_frame = self._create_collapsible_section(parent, row=row, title="Cache", default_open=False)
         self._add_labeled_entry(cache_frame, 0, "Card Cache Path", self.cache_path_var)
-        self._add_labeled_entry(cache_frame, 1, "Card Cache TTL (days)", self.cache_ttl_var)
+        self._add_labeled_entry(cache_frame, 1, "Card Cache TTL (days)", self.cache_ttl_var, numeric=True, hint="How long a cached has-cards verdict stays valid.")
         self._add_labeled_entry(cache_frame, 2, "No-drop Cache Path", self.drop_cache_path_var)
-        self._add_labeled_entry(cache_frame, 3, "No-drop Cache TTL (days)", self.drop_cache_ttl_var)
+        self._add_labeled_entry(cache_frame, 3, "No-drop Cache TTL (days)", self.drop_cache_ttl_var, numeric=True, hint="How long a cached no-remaining-drops verdict stays valid.")
         row += 1
 
         web_frame = self._create_collapsible_section(parent, row=row, title="Web Session", default_open=False)
-        self._add_labeled_entry(web_frame, 0, "Steam Web Cookies (JSON)", self.steam_web_cookies_var)
-        self._add_labeled_entry(web_frame, 1, "Browser (auto/chrome/firefox)", self.browser_cookies_browser_var)
+        self._add_labeled_entry(web_frame, 0, "Steam Web Cookies (JSON)", self.steam_web_cookies_var, hint="Optional manual community cookies. Usually auto-recovered from a browser instead.")
+        self._add_labeled_combobox(web_frame, 1, "Browser", self.browser_cookies_browser_var, BROWSER_CHOICES, hint="Which browser to pull a logged-in Steam community session from. auto tries all.")
         row += 1
 
         options_frame = self._create_collapsible_section(parent, row=row, title="Runtime Options", default_open=False)
         options = [
             ("Filter by trading cards", self.filter_cards_var),
             ("Use owned games API", self.use_owned_games_var),
-            ("Filter completed drops", self.filter_completed_var),
-            ("Keep completed drops", self.keep_completed_drops_var),
+            ("Skip already-farmed games (no drops left)", self.filter_completed_var),
             ("Enable card cache", self.enable_cache_var),
             ("Auto-detect browser cookies", self.auto_browser_cookies_var),
             ("Skip card-check failures", self.skip_failures_var),
             ("Enable encryption", self.enable_encryption_var),
-            ("Dry run (no Steam contact)", self.dry_run_var),
         ]
         for index, (label, variable) in enumerate(options):
             ttk.Checkbutton(options_frame, text=label, variable=variable, style="App.TCheckbutton").grid(row=index, column=0, columnspan=2, sticky="w", pady=2)
         row += 1
 
         log_frame = self._create_collapsible_section(parent, row=row, title="Logging", default_open=False)
-        self._add_labeled_entry(log_frame, 0, "Log Level", self.log_level_var)
+        self._add_labeled_combobox(log_frame, 0, "Log Level", self.log_level_var, LOG_LEVEL_CHOICES, hint="Verbosity of the log output. DEBUG is very chatty.")
         self._add_labeled_entry(log_frame, 1, "Log File", self.log_file_var)
         row += 1
 
@@ -606,8 +705,17 @@ class SteamIdleBotGUI:
         button_row.columnconfigure(1, weight=1)
         button_row.columnconfigure(2, weight=1)
 
+        dry_run_check = ttk.Checkbutton(
+            button_row,
+            text="Dry run — print the plan, never contact Steam",
+            variable=self.dry_run_var,
+            style="App.TCheckbutton",
+        )
+        dry_run_check.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        _ToolTip(dry_run_check, "Loads settings and prints the chosen games without logging in or idling. Good for a sanity check.")
+
         self.start_button = ttk.Button(button_row, text="Start Session", command=self._start_bot, style="Primary.TButton")
-        self.start_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.start_button.grid(row=1, column=0, sticky="ew", padx=(0, 4))
 
         self.stop_button = ttk.Button(
             button_row,
@@ -616,10 +724,10 @@ class SteamIdleBotGUI:
             state="disabled",
             style="Danger.TButton",
         )
-        self.stop_button.grid(row=0, column=1, sticky="ew", padx=(4, 4))
+        self.stop_button.grid(row=1, column=1, sticky="ew", padx=(4, 4))
 
         self.save_button = ttk.Button(button_row, text="Save Settings", command=self._save_settings, style="Secondary.TButton")
-        self.save_button.grid(row=0, column=2, sticky="ew", padx=(4, 0))
+        self.save_button.grid(row=1, column=2, sticky="ew", padx=(4, 0))
 
     def _build_console(self, parent: ttk.Frame) -> None:
         notebook = ttk.Notebook(parent, style="App.TNotebook")
@@ -793,9 +901,12 @@ class SteamIdleBotGUI:
         total_cards = 0
         for index, game in enumerate(sorted(games, key=lambda g: g.app_id), start=1):
             name = game_names.get(game.app_id) or game.name or f"App {game.app_id}"
-            cards = str(game.cards_before) if game.cards_before is not None else "?"
-            if game.cards_before is not None:
-                total_cards += game.cards_before
+            # Prefer the most recent count: cards_after is updated while idling;
+            # cards_before is the snapshot taken when the game was added.
+            latest = game.cards_after if game.cards_after is not None else game.cards_before
+            cards = str(latest) if latest is not None else "?"
+            if latest is not None:
+                total_cards += latest
             idle_min = f"{game.idle_minutes:.0f} min"
 
             values = (str(index), str(game.app_id), name, cards, idle_min)
@@ -821,10 +932,39 @@ class SteamIdleBotGUI:
         variable: tk.StringVar,
         *,
         show: str | None = None,
-    ) -> None:
-        ttk.Label(parent, text=label, style="FieldLabel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
+        hint: str | None = None,
+        numeric: bool = False,
+    ) -> ttk.Entry:
+        label_widget = ttk.Label(parent, text=label, style="FieldLabel.TLabel")
+        label_widget.grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
         entry = ttk.Entry(parent, textvariable=variable, show=show or "", style="App.TEntry")
+        if numeric:
+            vcmd = (entry.register(_is_number_input), "%P")
+            entry.configure(validate="key", validatecommand=vcmd)
         entry.grid(row=row, column=1, sticky="ew", pady=3)
+        if hint:
+            _ToolTip(label_widget, hint)
+            _ToolTip(entry, hint)
+        return entry
+
+    @staticmethod
+    def _add_labeled_combobox(
+        parent: tk.Misc,
+        row: int,
+        label: str,
+        variable: tk.StringVar,
+        values: tuple[str, ...],
+        *,
+        hint: str | None = None,
+    ) -> ttk.Combobox:
+        label_widget = ttk.Label(parent, text=label, style="FieldLabel.TLabel")
+        label_widget.grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
+        combo = ttk.Combobox(parent, textvariable=variable, values=list(values), state="readonly", style="App.TCombobox")
+        combo.grid(row=row, column=1, sticky="ew", pady=3)
+        if hint:
+            _ToolTip(label_widget, hint)
+            _ToolTip(combo, hint)
+        return combo
 
     def _load_initial_values(self) -> None:
         settings = self._try_load_settings()
@@ -861,7 +1001,6 @@ class SteamIdleBotGUI:
         self.auto_browser_cookies_var.set(settings.auto_browser_cookies)
         self.skip_failures_var.set(settings.skip_failures)
         self.enable_encryption_var.set(settings.enable_encryption)
-        self.keep_completed_drops_var.set(not settings.filter_completed_card_drops)
 
     def _try_load_settings(self) -> Settings | None:
         if self._initial_settings is not None:
@@ -881,9 +1020,6 @@ class SteamIdleBotGUI:
         steam_web_cookies_raw = self.steam_web_cookies_var.get().strip()
         steam_web_cookies = json.loads(steam_web_cookies_raw) if steam_web_cookies_raw else {}
 
-        keep_drops = self.keep_completed_drops_var.get()
-        filter_completed = not keep_drops if keep_drops else self.filter_completed_var.get()
-
         return Settings(
             username=self.username_var.get().strip(),
             password=self.password_var.get(),
@@ -891,7 +1027,7 @@ class SteamIdleBotGUI:
             game_app_ids=game_ids if isinstance(game_ids, list) else [],
             filter_trading_cards=self.filter_cards_var.get(),
             use_owned_games=self.use_owned_games_var.get(),
-            filter_completed_card_drops=filter_completed,
+            filter_completed_card_drops=self.filter_completed_var.get(),
             exclude_app_ids=exclude_ids if isinstance(exclude_ids, list) else [],
             max_games_to_idle=int(self.max_games_var.get().strip() or "32"),
             refresh_interval_seconds=int(self.refresh_interval_var.get().strip() or "600"),

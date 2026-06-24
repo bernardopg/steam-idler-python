@@ -337,15 +337,15 @@ class TestLoadInitialValues:
         gui._load_initial_values()
         assert gui.steam_web_cookies_var.get() == ""
 
-    def test_loads_keep_completed_drops_inverted(self, gui):
+    def test_loads_filter_completed_off(self, gui):
         gui._initial_settings = Settings(username="u", password="p", filter_completed_card_drops=False)
         gui._load_initial_values()
-        assert gui.keep_completed_drops_var.get() is True
+        assert gui.filter_completed_var.get() is False
 
-    def test_loads_keep_completed_drops_default(self, gui):
+    def test_loads_filter_completed_on(self, gui):
         gui._initial_settings = Settings(username="u", password="p", filter_completed_card_drops=True)
         gui._load_initial_values()
-        assert gui.keep_completed_drops_var.get() is False
+        assert gui.filter_completed_var.get() is True
 
     def test_try_load_settings_returns_initial(self, gui, settings):
         result = gui._try_load_settings()
@@ -476,18 +476,16 @@ class TestBuildSettingsFromForm:
         settings = gui._build_settings_from_form()
         assert settings.max_checks == 15
 
-    def test_keep_completed_drops_overrides_filter(self, gui):
+    def test_filter_completed_on_builds_true(self, gui):
         gui.username_var.set("u")
         gui.password_var.set("p")
-        gui.keep_completed_drops_var.set(True)
         gui.filter_completed_var.set(True)
         settings = gui._build_settings_from_form()
-        assert settings.filter_completed_card_drops is False
+        assert settings.filter_completed_card_drops is True
 
-    def test_filter_completed_used_when_keep_drops_off(self, gui):
+    def test_filter_completed_off_builds_false(self, gui):
         gui.username_var.set("u")
         gui.password_var.set("p")
-        gui.keep_completed_drops_var.set(False)
         gui.filter_completed_var.set(False)
         settings = gui._build_settings_from_form()
         assert settings.filter_completed_card_drops is False
@@ -846,11 +844,13 @@ class TestUpdateStatusPanel:
         mock_game1.app_id = 570
         mock_game1.name = "Dota 2"
         mock_game1.cards_before = 3
+        mock_game1.cards_after = None
         mock_game1.idle_minutes = 5.0
         mock_game2 = MagicMock()
         mock_game2.app_id = 730
         mock_game2.name = "CS2"
         mock_game2.cards_before = None
+        mock_game2.cards_after = None
         mock_game2.idle_minutes = 2.0
 
         mock_tracker = MagicMock()
@@ -872,6 +872,7 @@ class TestUpdateStatusPanel:
         mock_game.app_id = 570
         mock_game.name = "Dota 2"
         mock_game.cards_before = 3
+        mock_game.cards_after = None
         mock_game.idle_minutes = 5.0
 
         mock_tracker = MagicMock()
@@ -895,6 +896,7 @@ class TestUpdateStatusPanel:
         mock_game.app_id = 570
         mock_game.name = "Dota 2"
         mock_game.cards_before = 3
+        mock_game.cards_after = None
         mock_game.idle_minutes = 5.0
 
         mock_tracker = MagicMock()
@@ -918,6 +920,7 @@ class TestUpdateStatusPanel:
         mock_game.app_id = 99999
         mock_game.name = None
         mock_game.cards_before = 1
+        mock_game.cards_after = None
         mock_game.idle_minutes = 1.0
 
         mock_tracker = MagicMock()
@@ -934,11 +937,35 @@ class TestUpdateStatusPanel:
         values = gui.status_tree.item(items[0], "values")
         assert values[2] == "App 99999"
 
+    def test_cards_after_takes_precedence(self, gui):
+        mock_game = MagicMock()
+        mock_game.app_id = 570
+        mock_game.name = "Dota 2"
+        mock_game.cards_before = 5
+        mock_game.cards_after = 2  # live count drained from 5 to 2
+        mock_game.idle_minutes = 5.0
+
+        mock_tracker = MagicMock()
+        mock_tracker.games = {570: mock_game}
+        mock_tracker.session_minutes = 10.0
+
+        mock_bot = MagicMock()
+        mock_bot._idle_tracker = mock_tracker
+        mock_bot._game_name_map.return_value = {570: "Dota 2"}
+        gui._current_bot = mock_bot
+
+        gui._update_status_panel()
+        items = gui.status_tree.get_children()
+        values = gui.status_tree.item(items[0], "values")
+        assert values[3] == "2"  # shows latest (cards_after), not cards_before
+        assert "cards remaining: 2" in gui.status_summary_var.get()
+
     def test_zero_cards_shows_unknown(self, gui):
         mock_game = MagicMock()
         mock_game.app_id = 100
         mock_game.name = "Game"
         mock_game.cards_before = 0
+        mock_game.cards_after = None
         mock_game.idle_minutes = 1.0
 
         mock_tracker = MagicMock()
