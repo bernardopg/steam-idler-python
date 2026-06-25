@@ -133,18 +133,19 @@ class _ToolTip:
         self._tip = tip = tk.Toplevel(self.widget)
         tip.wm_overrideredirect(True)
         tip.wm_geometry(f"+{x}+{y}")
+        tip.configure(bg=PALETTE["border"])
         tk.Label(
             tip,
             text=self.text,
             justify="left",
             bg=PALETTE["overlay"],
             fg=PALETTE["text_bright"],
-            relief="solid",
-            borderwidth=1,
+            relief="flat",
+            borderwidth=0,
             padx=8,
             pady=4,
             wraplength=320,
-        ).pack()
+        ).pack(padx=1, pady=1)
 
     def _hide(self, _event: tk.Event | None = None) -> None:
         if self._tip is not None:
@@ -324,6 +325,10 @@ class SteamIdleBotGUI:
             lightcolor=P["border"],
             darkcolor=P["border"],
             insertcolor=P["text"],
+            # Without these, selecting text shows clam's white highlight under
+            # light-blue text — unreadable. Use a dark accent selection instead.
+            selectbackground=P["accent_muted"],
+            selectforeground=P["text_bright"],
             padding=(8, 6),
         )
         self.style.map(
@@ -407,14 +412,19 @@ class SteamIdleBotGUI:
             bordercolor=P["border"],
             lightcolor=P["border"],
             darkcolor=P["border"],
-            selectbackground=P["accent_muted"],
-            selectforeground=P["text"],
+            # A read-only combobox draws its value as *selected* text when focused;
+            # clam's default selection is white, which made the value illegible.
+            # Match the selection to the field so the text always stays readable.
+            selectbackground=P["input_bg"],
+            selectforeground=P["input_fg"],
             padding=(8, 6),
         )
         self.style.map(
             "App.TCombobox",
             fieldbackground=[("readonly", P["input_bg"]), ("focus", P["overlay"])],
-            foreground=[("readonly", P["input_fg"])],
+            foreground=[("readonly", P["input_fg"]), ("focus", P["input_fg"])],
+            selectbackground=[("readonly", P["input_bg"]), ("focus", P["overlay"])],
+            selectforeground=[("readonly", P["input_fg"]), ("focus", P["input_fg"])],
             bordercolor=[("focus", P["border_focus"])],
             lightcolor=[("focus", P["border_focus"])],
             darkcolor=[("focus", P["border_focus"])],
@@ -750,10 +760,16 @@ class SteamIdleBotGUI:
         ).grid(row=0, column=0, sticky="w")
         ttk.Button(
             log_toolbar,
+            text="Copy",
+            command=self._copy_logs,
+            style="Secondary.TButton",
+        ).grid(row=0, column=1, sticky="e", padx=(0, 6))
+        ttk.Button(
+            log_toolbar,
             text="Clear",
             command=self._clear_logs,
             style="Secondary.TButton",
-        ).grid(row=0, column=1, sticky="e")
+        ).grid(row=0, column=2, sticky="e")
         log_toolbar.columnconfigure(0, weight=1)
 
         log_frame = ttk.Frame(log_container, style="Surface.TFrame")
@@ -795,7 +811,7 @@ class SteamIdleBotGUI:
 
         report_container = ttk.Frame(notebook, style="Surface.TFrame")
         report_container.columnconfigure(0, weight=1)
-        report_container.rowconfigure(0, weight=1)
+        report_container.rowconfigure(1, weight=1)  # the text area (row 1), not the toolbar (row 0)
         notebook.add(report_container, text="  Session Report  ")
 
         report_toolbar = ttk.Frame(report_container, style="Surface.TFrame", padding=(8, 4))
@@ -1260,6 +1276,12 @@ class SteamIdleBotGUI:
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
+
+    def _copy_logs(self) -> None:
+        """Copy the full log output to the system clipboard."""
+        text = self.log_text.get("1.0", "end-1c")
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
 
     def _toggle_auto_scroll(self) -> None:
         self._auto_scroll = self._auto_scroll_var.get()

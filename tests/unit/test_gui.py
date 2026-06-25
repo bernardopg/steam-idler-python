@@ -688,6 +688,19 @@ class TestClearLogs:
         assert str(gui.log_text.cget("state")) == "disabled"
 
 
+class TestCopyLogs:
+    def test_copies_log_text_to_clipboard(self, gui):
+        gui._clear_logs()
+        gui._append_log("alpha\nbeta\n")
+        gui._copy_logs()
+        assert gui.root.clipboard_get() == "alpha\nbeta\n"
+
+    def test_copy_does_not_clear_logs(self, gui):
+        gui._append_log("kept\n")
+        gui._copy_logs()
+        assert "kept" in gui.log_text.get("1.0", "end")
+
+
 # ---------------------------------------------------------------------------
 # Report operations
 # ---------------------------------------------------------------------------
