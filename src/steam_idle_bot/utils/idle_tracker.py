@@ -24,18 +24,18 @@ class GameIdleInfo:
     accumulated_seconds: float = 0.0
     cards_before: int | None = None
     cards_after: int | None = None
+    inventory_drops: int = 0
 
     @property
     def cards_dropped(self) -> int:
         """Number of cards dropped for this game."""
-        if self.cards_before is None or self.cards_after is None:
-            return 0
-        return max(0, self.cards_before - self.cards_after)
+        remaining_delta = 0 if self.cards_before is None or self.cards_after is None else max(0, self.cards_before - self.cards_after)
+        return max(remaining_delta, self.inventory_drops)
 
     @property
     def drop_status_known(self) -> bool:
         """Whether both before/after card counts are known for this game."""
-        return self.cards_before is not None and self.cards_after is not None
+        return self.inventory_drops > 0 or (self.cards_before is not None and self.cards_after is not None)
 
     @property
     def idle_seconds(self) -> float:
@@ -69,6 +69,7 @@ class IdleTracker:
         self.game_names: dict[int, str] = {}
         self._pending_cards_before: dict[int, int] = {}
         self._pending_cards_after: dict[int, int] = {}
+        self._pending_inventory_drops: dict[int, int] = {}
         self.logger = logging.getLogger(__name__)
 
     def start_session(self, game_ids: list[int], game_names: dict[int, str] | None = None) -> None:
@@ -86,6 +87,8 @@ class IdleTracker:
                 game.cards_before = self._pending_cards_before[app_id]
             if app_id in self._pending_cards_after:
                 game.cards_after = self._pending_cards_after[app_id]
+            if app_id in self._pending_inventory_drops:
+                game.inventory_drops = self._pending_inventory_drops[app_id]
             self.games[app_id] = game
         self.logger.info(f"Idle tracker started for {len(game_ids)} games")
 
@@ -111,6 +114,8 @@ class IdleTracker:
                     game.cards_before = self._pending_cards_before[app_id]
                 if app_id in self._pending_cards_after:
                     game.cards_after = self._pending_cards_after[app_id]
+                if app_id in self._pending_inventory_drops:
+                    game.inventory_drops = self._pending_inventory_drops[app_id]
                 self.games[app_id] = game
             elif self.games[app_id].end_time is not None:
                 self.games[app_id].start_time = now
@@ -152,6 +157,13 @@ class IdleTracker:
             self.games[app_id].cards_after = count
             return
         self._pending_cards_after[app_id] = count
+
+    def set_inventory_drops(self, app_id: int, count: int) -> None:
+        """Record drops detected directly from newly acquired inventory cards."""
+        if app_id in self.games:
+            self.games[app_id].inventory_drops = count
+            return
+        self._pending_inventory_drops[app_id] = count
 
     @property
     def session_seconds(self) -> float:
@@ -266,6 +278,8 @@ class IdleTracker:
             status = "❓ unknown" if not game.drop_status_known else f"✅ +{dropped} drop(s)" if dropped > 0 else "❌ 0 drops"
             lines.append(f"  [{game.app_id}] {name}")
             lines.append(f"    Cards: {cards_before} → {cards_after} ({status})")
+            if game.inventory_drops:
+                lines.append(f"    Inventory drops: +{game.inventory_drops}")
             lines.append(f"    Time:  {game.idle_minutes:.1f} minutes")
             lines.append("")
 
@@ -306,6 +320,7 @@ class IdleTracker:
                     "name": game.name or None,
                     "cards_before": game.cards_before,
                     "cards_after": game.cards_after,
+                    "inventory_drops": game.inventory_drops,
                     "cards_dropped": game.cards_dropped,
                     "drop_status_known": game.drop_status_known,
                     "idle_minutes": round(game.idle_minutes, 2),

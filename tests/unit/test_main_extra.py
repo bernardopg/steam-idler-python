@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import signal
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from steam_idle_bot.config.settings import Settings
@@ -16,6 +17,7 @@ from steam_idle_bot.main import (
     build_steam_client,
     create_parser,
 )
+from steam_idle_bot.steam.inventory import InventoryCardDrop
 
 
 class DummyClient:
@@ -96,6 +98,25 @@ class DummyBadgeService:
 
     def get_cards_remaining(self, steam_id):
         return self.result
+
+
+class DummyInventoryReader:
+    def __init__(self, before=None, after=None):
+        self.before = before or {}
+        self.after = after or {}
+        self.calls = 0
+
+    def snapshot(self, steam_id):
+        self.calls += 1
+        return self.before if self.calls == 1 else self.after
+
+    def new_cards_by_app(self, before, after, active_app_ids):
+        active = set(active_app_ids)
+        grouped = {}
+        for asset_id, card in after.items():
+            if asset_id not in before and card.app_id in active:
+                grouped.setdefault(card.app_id, []).append(card)
+        return grouped
 
 
 def make_settings(**overrides):
@@ -338,6 +359,52 @@ class TestCaptureFinalCards:
 
 
 # ---------------------------------------------------------------------------
+# inventory snapshots
+# ---------------------------------------------------------------------------
+
+
+class TestInventorySnapshots:
+    def test_detects_inventory_drops_even_when_badge_counts_do_not_change(self):
+        before = {
+            "old": InventoryCardDrop(asset_id="old", app_id=311210, name="Old Card", game_name="COD"),
+        }
+        after = {
+            **before,
+            "new": InventoryCardDrop(asset_id="new", app_id=311210, name="Hunted", game_name="COD"),
+        }
+        bot = make_bot(games=[311210])
+        bot._steam_id = "123"
+        bot._games_to_idle = [311210]
+        bot._inventory_reader = cast(Any, DummyInventoryReader(before=before, after=after))
+        bot._idle_tracker.start_session([311210], {311210: "Call of Duty: Black Ops III"})
+        bot._idle_tracker.set_cards_before(311210, 3)
+        bot._idle_tracker.set_cards_after(311210, 3)
+
+        bot._capture_initial_inventory()
+        bot._capture_final_inventory()
+
+        info = bot._idle_tracker.games[311210]
+        assert info.inventory_drops == 1
+        assert info.cards_dropped == 1
+
+    def test_inventory_drops_ignore_non_idled_games(self):
+        before = {}
+        after = {
+            "other": InventoryCardDrop(asset_id="other", app_id=999, name="Other", game_name="Other"),
+        }
+        bot = make_bot(games=[311210])
+        bot._steam_id = "123"
+        bot._games_to_idle = [311210]
+        bot._inventory_reader = cast(Any, DummyInventoryReader(before=before, after=after))
+        bot._idle_tracker.start_session([311210], {})
+
+        bot._capture_initial_inventory()
+        bot._capture_final_inventory()
+
+        assert bot._idle_tracker.games[311210].inventory_drops == 0
+
+
+# ---------------------------------------------------------------------------
 # _backfill_drained_final_counts
 # ---------------------------------------------------------------------------
 
@@ -456,7 +523,9 @@ class TestResolveActiveSteamId:
 
 
 class TestRecoverSessionViaBrowser:
-    def test_recovers_cookies(self, monkeypatch):
+    def test_recovers_cookies(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text("STEAM_WEB_COOKIES={}\n", encoding="utf-8")
         mock_load = MagicMock(return_value={"steamLoginSecure": "token"})
         monkeypatch.setattr("steam_idle_bot.steam.browser_cookies.load_community_cookies", mock_load)
         monkeypatch.setattr(
@@ -468,6 +537,30 @@ class TestRecoverSessionViaBrowser:
         bot.game_manager = gm
         assert bot._recover_session_via_browser("123") is True
         assert gm._web_session == {"built": True}
+
+    def test_recovers_and_persists_only_cookie_line_for_next_run(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(
+            "USERNAME=user\nPASSWORD=pass\nMAX_GAMES_TO_IDLE=30\nDURATION_MINUTES=0\nSTEAM_WEB_COOKIES={}\n",
+            encoding="utf-8",
+        )
+        cookies = {"steamLoginSecure": "token", "sessionid": "abc"}
+        mock_load = MagicMock(return_value=cookies)
+        monkeypatch.setattr("steam_idle_bot.steam.browser_cookies.load_community_cookies", mock_load)
+        monkeypatch.setattr(
+            "steam_idle_bot.steam.client.SteamClientWrapper._build_web_session_from_cookies",
+            staticmethod(lambda recovered: {"built_from": recovered}),
+        )
+
+        settings = make_settings(steam_web_cookies={}, max_games_to_idle=2, duration_minutes=1)
+        bot = make_bot(settings=settings)
+
+        assert bot._recover_session_via_browser("123") is True
+        assert settings.steam_web_cookies == cookies
+        saved = (tmp_path / ".env").read_text(encoding="utf-8")
+        assert "MAX_GAMES_TO_IDLE=30" in saved
+        assert "DURATION_MINUTES=0" in saved
+        assert 'STEAM_WEB_COOKIES={"steamLoginSecure":"token","sessionid":"abc"}' in saved
 
     def test_returns_false_when_no_cookies(self, monkeypatch):
         monkeypatch.setattr("steam_idle_bot.steam.browser_cookies.load_community_cookies", MagicMock(return_value=None))

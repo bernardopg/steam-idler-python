@@ -14,6 +14,7 @@ from pydantic_settings import (
 
 LIST_FIELDS = {"game_app_ids", "exclude_app_ids"}
 COOKIE_MAP_FIELDS = {"steam_web_cookies"}
+_MISSING = object()
 
 
 def _parse_int_list(value: Any) -> Any:
@@ -150,6 +151,17 @@ class FlexibleDotEnvSettingsSource(DotEnvSettingsSource):
 
 class Settings(BaseSettings):
     """Application settings with validation and environment variable support."""
+
+    def __init__(self, **data: Any) -> None:
+        # Pydantic-settings deep-merges mapping values from lower-priority
+        # sources. That is dangerous for cookies: explicit GUI/form cookies must
+        # replace stale .env cookies instead of inheriting old sessionid/country
+        # entries. Preserve the caller's explicit value and restore it after the
+        # settings sources have been merged.
+        explicit_cookies = data.get("steam_web_cookies", data.get("STEAM_WEB_COOKIES", _MISSING))
+        super().__init__(**data)
+        if explicit_cookies is not _MISSING:
+            object.__setattr__(self, "steam_web_cookies", _parse_cookie_map(explicit_cookies))
 
     # Steam credentials
     username: str = Field(..., description="Steam username")

@@ -12,6 +12,12 @@ def test_game_idle_info_properties() -> None:
     assert info.idle_minutes == 2.0
 
 
+def test_game_idle_info_counts_inventory_drops_when_remaining_count_lags() -> None:
+    info = GameIdleInfo(app_id=10, cards_before=3, cards_after=3, inventory_drops=2)
+    assert info.cards_dropped == 2
+    assert info.drop_status_known is True
+
+
 def test_game_idle_info_handles_missing_data() -> None:
     info = GameIdleInfo(app_id=10)
     assert info.cards_dropped == 0
@@ -67,10 +73,31 @@ def test_idle_tracker_applies_pending_card_updates_when_session_starts() -> None
 
     tracker.set_cards_before(10, 5)
     tracker.set_cards_after(10, 2)
+    tracker.set_inventory_drops(10, 1)
     tracker.start_session([10])
 
     assert tracker.games[10].cards_before == 5
     assert tracker.games[10].cards_after == 2
+    assert tracker.games[10].inventory_drops == 1
+
+
+def test_idle_tracker_report_shows_inventory_drops_even_when_counts_do_not_change(monkeypatch) -> None:
+    tracker = IdleTracker()
+    times = iter([100.0, 160.0])
+    monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: next(times))
+
+    tracker.start_session([10], game_names={10: "Laggy Badge Page"})
+    tracker.set_cards_before(10, 3)
+    tracker.set_cards_after(10, 3)
+    tracker.set_inventory_drops(10, 1)
+    tracker.end_session()
+
+    assert tracker.total_cards_dropped == 1
+    assert [g.app_id for g in tracker.games_with_drops] == [10]
+    report = tracker.format_report()
+    assert "Laggy Badge Page" in report
+    assert "Cards: 3 → 3 (✅ +1 drop(s))" in report
+    assert "Inventory drops: +1" in report
 
 
 def test_idle_tracker_update_games_stops_removed_games(monkeypatch) -> None:
@@ -153,6 +180,7 @@ def test_to_dict_structured_snapshot(monkeypatch):
         "name": "Alpha",
         "cards_before": 5,
         "cards_after": 2,
+        "inventory_drops": 0,
         "cards_dropped": 3,
         "drop_status_known": True,
         "idle_minutes": 5.0,

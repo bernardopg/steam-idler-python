@@ -14,6 +14,7 @@ from .config.settings import Settings
 from .steam.badges import BadgeService
 from .steam.client import SteamClientWrapper
 from .steam.games import GameManager
+from .steam.inventory import InventoryCardDrop, SteamTradingCardInventory
 from .steam.steam_utility import SteamUtilityIdleClient
 from .steam.trading_cards import TradingCardDetector
 from .utils.idle_tracker import IdleTracker
@@ -52,6 +53,8 @@ class SteamIdleBot:
         self._idle_tracker = IdleTracker()
         self._games_to_idle: list[int] = []
         self._steam_id: str | None = None
+        self._inventory_reader: SteamTradingCardInventory | None = None
+        self._inventory_before: dict[str, InventoryCardDrop] = {}
         self._stop_event = threading.Event()
         self._force_stop_event = threading.Event()
         self._last_report = ""
@@ -123,6 +126,10 @@ class SteamIdleBot:
 
         # Store games list for report
         self._games_to_idle = games
+
+        # Snapshot inventory before idling. Badge pages can lag behind actual item
+        # drops; inventory asset ids are the direct source of newly acquired cards.
+        self._capture_initial_inventory()
 
         # Record initial card counts if badge service is available
         self._capture_initial_cards()
@@ -338,16 +345,34 @@ class SteamIdleBot:
                     cards = badge_service.get_cards_remaining(steam_id)
                     for app_id, count in cards.items():
                         self._idle_tracker.set_cards_before(app_id, count)
-                    self.logger.info(f"Captured initial card counts for {len(cards)} games")
+                    self.logger.info(f"Captured initial badge API card counts for {len(cards)} games")
 
             # Fallback/augment: counts parsed by the scraper during filtering. This
             # populates the panel/report when the badge API has no card data.
             if hasattr(self.game_manager, "get_drop_counts"):
+                scraper_count = 0
+                active_games = set(self._games_to_idle)
                 for app_id, count in self.game_manager.get_drop_counts().items():
+                    if active_games and app_id not in active_games:
+                        continue
                     if self._idle_tracker.has_pending_card_before(app_id) is False and (app_id not in self._idle_tracker.games or self._idle_tracker.games[app_id].cards_before is None):
                         self._idle_tracker.set_cards_before(app_id, count)
+                        scraper_count += 1
+                if scraper_count:
+                    self.logger.info(f"Captured initial scraped card counts for {scraper_count} games")
         except Exception as e:
             self.logger.warning(f"Could not capture initial card counts: {e}")
+
+    def _capture_initial_inventory(self) -> None:
+        """Snapshot trading-card inventory assets before idling starts."""
+        if not self._inventory_reader or not self._steam_id:
+            return
+        try:
+            self._inventory_before = self._inventory_reader.snapshot(self._steam_id)
+            self.logger.info("Captured initial trading-card inventory snapshot with %d cards", len(self._inventory_before))
+        except Exception as e:
+            self._inventory_before = {}
+            self.logger.warning("Could not capture initial trading-card inventory snapshot: %s", e)
 
     def _capture_final_cards(self) -> None:
         """Capture the final number of cards remaining for each game."""
@@ -365,7 +390,7 @@ class SteamIdleBot:
                         authenticated_read = True
                         for app_id, count in cards.items():
                             self._idle_tracker.set_cards_after(app_id, count)
-                        self.logger.info(f"Captured final card counts for {len(cards)} games")
+                        self.logger.info(f"Captured final badge API card counts for {len(cards)} games")
 
             # Fallback/augment: re-scrape idled games to read current counts so the
             # session report can show how many cards dropped while idling.
@@ -377,15 +402,41 @@ class SteamIdleBot:
                 )
                 if counts is not None:
                     authenticated_read = True
+                    scraper_count = 0
+                    active_games = set(self._games_to_idle)
                     for app_id, count in counts.items():
+                        if active_games and app_id not in active_games:
+                            continue
                         game = self._idle_tracker.games.get(app_id)
                         if game is None or game.cards_after is None:
                             self._idle_tracker.set_cards_after(app_id, count)
+                            scraper_count += 1
+                    if scraper_count:
+                        self.logger.info(f"Captured final scraped card counts for {scraper_count} games")
         except Exception as e:
             self.logger.warning(f"Could not capture final card counts: {e}")
 
         if authenticated_read:
             self._backfill_drained_final_counts()
+
+    def _capture_final_inventory(self) -> None:
+        """Detect newly acquired trading cards by comparing inventory snapshots."""
+        if not self._inventory_reader or not self._steam_id or not self._inventory_before:
+            return
+        try:
+            after = self._inventory_reader.snapshot(self._steam_id)
+            new_by_app = self._inventory_reader.new_cards_by_app(self._inventory_before, after, self._games_to_idle)
+            total = 0
+            for app_id, cards in new_by_app.items():
+                total += len(cards)
+                self._idle_tracker.set_inventory_drops(app_id, len(cards))
+            if total:
+                details = "; ".join(f"{app_id}: " + ", ".join(card.name for card in cards) for app_id, cards in sorted(new_by_app.items()))
+                self.logger.info("Detected %d new trading-card inventory drop(s): %s", total, details)
+            else:
+                self.logger.info("Detected 0 new trading-card inventory drops")
+        except Exception as e:
+            self.logger.warning("Could not capture final trading-card inventory snapshot: %s", e)
 
     def _backfill_drained_final_counts(self) -> None:
         """Set ``cards_after = 0`` for idled games drained during this session.
@@ -425,6 +476,8 @@ class SteamIdleBot:
         # Capture final card counts before showing report
         with contextlib.suppress(Exception):
             self._capture_final_cards()
+        with contextlib.suppress(Exception):
+            self._capture_final_inventory()
 
         # Optionally re-scrape after a delay: Steam badge pages can lag behind
         # the actual drops at the moment idling stops.
@@ -434,6 +487,8 @@ class SteamIdleBot:
             self.client.sleep(delay)
             with contextlib.suppress(Exception):
                 self._capture_final_cards()
+            with contextlib.suppress(Exception):
+                self._capture_final_inventory()
 
         # Print report to console
         report = self._idle_tracker.format_report()
@@ -515,17 +570,48 @@ class SteamIdleBot:
 
             session = SteamClientWrapper._build_web_session_from_cookies(cookies)
             self.game_manager.set_web_session(session)
+            self._inventory_reader = SteamTradingCardInventory(self.settings, session)
+            self.settings.steam_web_cookies = cookies
+            try:
+                self._persist_recovered_web_cookies(cookies)
+                self.logger.info("Saved recovered steamcommunity cookies to .env for future runs")
+            except Exception as err:  # noqa: BLE001 - recovery itself already succeeded
+                self.logger.debug("Could not persist recovered browser cookies: %s", err)
             self.logger.info("Recovered authenticated steamcommunity session from local browser cookies")
             return True
         except Exception as err:  # noqa: BLE001 - recovery is best-effort
             self.logger.debug(f"Browser cookie recovery failed: {err}")
             return False
 
+    @staticmethod
+    def _persist_recovered_web_cookies(cookies: dict[str, str]) -> None:
+        """Persist only STEAM_WEB_COOKIES without rewriting other .env settings.
+
+        Browser recovery often happens during a run with temporary CLI overrides
+        such as ``--max-games`` or ``--duration-minutes``. Calling
+        ``Settings.save_to_env_file()`` here would serialize those temporary
+        overrides back into the user's persistent config, so update just the
+        recovered cookie line instead.
+        """
+        target = Path(".env")
+        rendered = "STEAM_WEB_COOKIES=" + json.dumps(cookies, ensure_ascii=False, separators=(",", ":"))
+        lines = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
+
+        for index, line in enumerate(lines):
+            if line.startswith("STEAM_WEB_COOKIES="):
+                lines[index] = rendered
+                break
+        else:
+            lines.append(rendered)
+
+        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
     def _configure_authenticated_web_session(self) -> None:
         """Configure the scraping layer with any authenticated web session available."""
         web_session = self._get_authenticated_web_session()
         if web_session:
             self.game_manager.set_web_session(web_session)
+            self._inventory_reader = SteamTradingCardInventory(self.settings, web_session)
             self.logger.info("Authenticated Steam web session enabled for card-drop checks")
         else:
             self.logger.warning("Could not obtain authenticated Steam web session")

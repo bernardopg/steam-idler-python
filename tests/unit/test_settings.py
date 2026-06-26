@@ -65,6 +65,22 @@ class TestSettings:
         )
         assert _prepare_special_field_value("username", "user") == (False, "user")
 
+    def test_init_steam_web_cookies_override_dotenv_without_merging(self, tmp_path, monkeypatch):
+        """Explicit GUI/form cookies must replace stale dotenv cookies, not merge with them."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(
+            'USERNAME=file\nPASSWORD=filepass\nSTEAM_WEB_COOKIES={"steamLoginSecure":"stale","sessionid":"old"}\n',
+            encoding="utf-8",
+        )
+
+        settings = Settings(
+            username="init",
+            password="initpass",
+            steam_web_cookies={"steamLoginSecure": "fresh"},
+        )
+
+        assert settings.steam_web_cookies == {"steamLoginSecure": "fresh"}
+
     def test_invalid_credentials(self):
         """Test validation of placeholder credentials."""
         with pytest.raises(ValueError, match="placeholder values"):
