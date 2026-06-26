@@ -796,7 +796,9 @@ class TestCreateParser:
 
 
 class TestLoadSettingsFromArgs:
-    def test_loads_with_overrides(self):
+    def test_loads_with_overrides(self, monkeypatch):
+        monkeypatch.setenv("USERNAME", "test_user")
+        monkeypatch.setenv("PASSWORD", "test_pass")
         args = argparse.Namespace(
             config=None,
             no_trading_cards=True,
