@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12%2B-66c0f4.svg" alt="Python 3.12+"></a>
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/managed%20by-uv-a3cf06.svg" alt="uv-managed"></a>
-  <img src="https://img.shields.io/badge/tests-420%20passing-2ea043.svg" alt="420 tests passing">
+  <img src="https://img.shields.io/badge/tests-560%20passing-2ea043.svg" alt="560 tests passing">
   <img src="https://img.shields.io/badge/typed-mypy%20clean-66c0f4.svg" alt="mypy clean">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c7d5e0.svg" alt="MIT license"></a>
   <a href="docs/en/README.md"><img src="https://img.shields.io/badge/docs-EN-blue" alt="English docs"></a>
@@ -26,11 +26,12 @@ Most idlers blindly run every game forever. Steam Idle Bot is **accurate and sel
 | | |
 |---|---|
 | 🎴 **Drops only where it matters** | Detects which games have trading cards and how many drops remain — idles just those, never wasting a slot on a drained game. |
-| 🧠 **Learns over time** | A persistent no-drop cache records fully-farmed games and skips them forever. Each run scans less. |
+| 🧠 **Learns over time** | Persistent no-drop caches record fully-farmed games; short-lived positive caches avoid re-scraping active games every refresh. |
 | 🔐 **Accurate by design** | Verifies the Steam web session is *genuinely* logged in before trusting it; auto-recovers a valid session from a browser you're signed into. |
 | 🖥️ **Readable output** | Live panel of game names, cards remaining and idle time; structured session report + optional JSON/Markdown checkpoints. |
 | 🔁 **Two backends, one interface** | Built-in Python client (Steam Guard / 2FA) **or** a local `steam-utility` install — with transparent fallback if one fails. |
-| ⚡ **Modern & tested** | `uv`-managed, fully typed, 420 tests across Python 3.12–3.14. |
+| 🔄 **Rotates when cards drain** | Inventory snapshots can prove a game dropped all known remaining cards before badge pages catch up, so refreshes can replace it mid-session. |
+| ⚡ **Modern & tested** | `uv`-managed, fully typed, 560 tests across Python 3.12–3.14. |
 
 ---
 
@@ -89,8 +90,12 @@ Game selection is a **funnel** — each stage narrows the set, capped at Steam's
 ./run.sh --refresh-interval-seconds 300   # re-run selection every 5 min
 ./run.sh --checkpoint-minutes 5 --duration-minutes 25  # timed run + JSON/MD checkpoints
 ./run.sh --stop-app-ids "570,730"     # stop steam-utility idles for those App IDs and exit
+STEAM_IDLE_SKIP_SYNC=1 ./run.sh       # skip the runner's preflight uv sync
+STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh  # show uv sync output while preparing the environment
 ./run-gui.sh                          # desktop GUI
 ```
+
+`./run.sh` keeps the Python bot out of a shell pipeline so `Ctrl+C` reaches it directly, writes bot output to `logs/runs/run_*.log`, and prints a short startup/exit banner. By default it clears stale exported Steam Idle Bot environment overrides so `.env` wins; set `STEAM_IDLE_PRESERVE_ENV=1` when you intentionally want exported variables to override `.env`.
 
 Full flag and setting reference: **[USAGE guide](docs/en/USAGE.md)**.
 

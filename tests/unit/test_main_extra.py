@@ -76,7 +76,7 @@ class DummyGameManager:
     def game_names(self):
         return self._game_names
 
-    def get_games_to_idle(self, steam_id):
+    def get_games_to_idle(self, steam_id, *, quiet=False, session_exclude_app_ids=None):
         return list(self.games)
 
     def resolve_active_steam_id(self):
@@ -402,6 +402,28 @@ class TestInventorySnapshots:
         bot._capture_final_inventory()
 
         assert bot._idle_tracker.games[311210].inventory_drops == 0
+
+    def test_inventory_progress_marks_known_drained_game_for_rotation(self):
+        before = {
+            "old": InventoryCardDrop(asset_id="old", app_id=311210, name="Old Card", game_name="COD"),
+        }
+        after = {
+            **before,
+            "new1": InventoryCardDrop(asset_id="new1", app_id=311210, name="Hunted", game_name="COD"),
+            "new2": InventoryCardDrop(asset_id="new2", app_id=311210, name="Another", game_name="COD"),
+        }
+        bot = make_bot(games=[311210])
+        bot._steam_id = "123"
+        bot._games_to_idle = [311210]
+        bot._inventory_reader = cast(Any, DummyInventoryReader(before=before, after=after))
+        bot._idle_tracker.start_session([311210], {})
+        bot._idle_tracker.set_cards_before(311210, 2)
+
+        bot._capture_initial_inventory()
+        bot._capture_inventory_progress()
+
+        assert bot._idle_tracker.games[311210].inventory_drops == 2
+        assert bot._session_drained_app_ids == {311210}
 
 
 # ---------------------------------------------------------------------------

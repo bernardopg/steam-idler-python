@@ -57,6 +57,15 @@ class CardDropChecker:
         if self.cache_enabled:
             self._load_no_drop_cache()
 
+        # Short-lived cache of games confirmed to still have drops. Card-drop
+        # filtering re-runs every few minutes during a session; a game that
+        # has drops now will not drain between two refresh cycles (drops arrive
+        # over hours), so re-scraping the same badge pages every cycle wastes
+        # HTTP requests. The TTL is deliberately short so a drained game is
+        # detected within one window. Keyed by normalized Steam ID.
+        self._has_drops_cache: dict[str, dict[int, float]] = {}
+        self._has_drops_cache_ttl: float = 300.0  # 5 minutes
+
         # Whether the supplied session was actually verified as logged in against
         # steamcommunity.com. ``None`` means "not yet probed".
         self._auth_verified: bool | None = None
@@ -221,6 +230,12 @@ class CardDropChecker:
                 trusted = confident or self._authenticated_session
                 self._remember_no_drop(steam_id, app_id, trusted)
 
+            # A confirmed "has drops" verdict is valid only for a short window —
+            # the game can drain while idling — so cache it briefly to avoid
+            # re-scraping the same badge page on every refresh cycle.
+            if result is True:
+                self._remember_has_drops(steam_id, app_id)
+
             # Log the scraping result with more details
             self.detailed_logger.log_scraping_result(app_id, steam_id, result, content[:500])
 
@@ -253,16 +268,31 @@ class CardDropChecker:
 
         # Skip games we already confirmed have no remaining drops on a prior run.
         cached_no_drop = self._cached_no_drop_ids(steam_id)
-        to_check = [app_id for app_id in game_ids if app_id not in cached_no_drop]
-        cached_skipped = len(game_ids) - len(to_check)
+        # Games recently confirmed to still have drops are trusted for a short
+        # window, avoiding a redundant scrape of their badge page every cycle.
+        cached_has_drops = self._cached_has_drops_ids(steam_id)
+
+        filtered = [app_id for app_id in game_ids if app_id in cached_has_drops]
+        cached_hits = len(filtered)
+        to_check = [app_id for app_id in game_ids if app_id not in cached_no_drop and app_id not in cached_has_drops]
+        cached_skipped = len(game_ids) - len(to_check) - cached_hits
         if cached_skipped:
             logger.info(
                 "Skipping %s games already confirmed without drops on a previous run (cached)",
                 cached_skipped,
             )
+        if cached_hits:
+            logger.info(
+                "Trusting %s games still have drops (confirmed within the last %.0f min cache window)",
+                cached_hits,
+                self._has_drops_cache_ttl / 60.0,
+            )
 
         total = len(to_check)
-        logger.info("Checking card drops for %s games via web scraping...", total)
+        if total:
+            logger.info("Checking card drops for %s games via web scraping...", total)
+        else:
+            logger.info("All candidate games resolved from cache; no scraping needed")
 
         for index, app_id in enumerate(to_check, start=1):
             try:
@@ -465,6 +495,25 @@ class CardDropChecker:
         """Drop the in-memory no-drop cache (does not remove the on-disk file)."""
         self._no_drop_cache.clear()
         self._no_drop_dirty = False
+        self._has_drops_cache.clear()
+
+    def _remember_has_drops(self, steam_id: str, app_id: int) -> None:
+        """Record a short-lived positive verdict so the next filter cycle skips the scrape."""
+        key = self._normalize_steam_id(steam_id)
+        self._has_drops_cache.setdefault(key, {})[app_id] = time.time()
+
+    def _cached_has_drops_ids(self, steam_id: str) -> set[int]:
+        """Return app IDs confirmed to still have drops within the cache window."""
+        key = self._normalize_steam_id(steam_id)
+        bucket = self._has_drops_cache.get(key)
+        if not bucket:
+            return set()
+        now = time.time()
+        result = {app_id for app_id, ts in bucket.items() if now - ts < self._has_drops_cache_ttl}
+        # Opportunistically evict expired entries to keep the map bounded.
+        if len(result) != len(bucket):
+            self._has_drops_cache[key] = {app_id: ts for app_id, ts in bucket.items() if now - ts < self._has_drops_cache_ttl}
+        return result
 
     def _remember_no_drop(self, steam_id: str, app_id: int, trusted: bool) -> None:
         key = self._normalize_steam_id(steam_id)

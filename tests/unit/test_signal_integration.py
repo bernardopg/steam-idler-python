@@ -73,5 +73,9 @@ def test_run_sh_is_valid_and_forwards_signals():
     text = run_sh.read_text(encoding="utf-8")
     assert "trap " in text
     assert "mkfifo" in text
+    assert "mktemp -d" in text
+    assert "STEAM_IDLE_RUNNER_VERBOSE" in text
+    assert "STEAM_IDLE_SKIP_SYNC" in text
+    assert "Run log:" in text
     # Python must not be the head of a pipeline, so Ctrl+C reaches it directly.
     assert "> \"$FIFO\"" in text

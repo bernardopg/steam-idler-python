@@ -15,6 +15,9 @@ def test_game_idle_info_properties() -> None:
 def test_game_idle_info_counts_inventory_drops_when_remaining_count_lags() -> None:
     info = GameIdleInfo(app_id=10, cards_before=3, cards_after=3, inventory_drops=2)
     assert info.cards_dropped == 2
+    assert info.remaining_count_drops == 0
+    assert info.drop_source == "inventory"
+    assert info.count_lagged_inventory is True
     assert info.drop_status_known is True
 
 
@@ -96,8 +99,10 @@ def test_idle_tracker_report_shows_inventory_drops_even_when_counts_do_not_chang
     assert [g.app_id for g in tracker.games_with_drops] == [10]
     report = tracker.format_report()
     assert "Laggy Badge Page" in report
-    assert "Cards: 3 → 3 (✅ +1 drop(s))" in report
+    assert "Cards: 3 → 3 (✅ +1 drop(s), inventory-confirmed; badge count lagged)" in report
     assert "Inventory drops: +1" in report
+    assert "inventory is used for the drop total" in report
+    assert "inventory" in report
 
 
 def test_idle_tracker_update_games_stops_removed_games(monkeypatch) -> None:
@@ -182,6 +187,8 @@ def test_to_dict_structured_snapshot(monkeypatch):
         "cards_after": 2,
         "inventory_drops": 0,
         "cards_dropped": 3,
+        "drop_source": "remaining-count",
+        "count_lagged_inventory": False,
         "drop_status_known": True,
         "idle_minutes": 5.0,
     }

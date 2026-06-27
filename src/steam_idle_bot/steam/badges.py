@@ -5,6 +5,7 @@ from __future__ import annotations
 __all__ = ["BadgeService"]
 
 import logging
+import time
 from collections.abc import Iterable
 from typing import Any
 
@@ -33,6 +34,17 @@ class BadgeService:
         self.settings = settings
         self.timeout = timeout or settings.api_timeout
         self._http = session or self._build_session()
+        # Short-lived badge cache so the repeated filtering passes inside a
+        # single idle session (catalog discovery + drop filtering + per-refresh
+        # re-runs) don't each re-fetch the full badge list. ``get_cards_remaining``
+        # bypasses this with ``use_cache=False`` because callers use it for
+        # authoritative before/after snapshots that must be fresh.
+        self._badges_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+        self._badges_cache_ttl: float = 60.0
+
+    def clear_cache(self) -> None:
+        """Drop the in-memory badge cache (the on-disk no-drop cache is separate)."""
+        self._badges_cache.clear()
 
     @staticmethod
     def _build_session() -> requests.Session:
@@ -49,9 +61,6 @@ class BadgeService:
         session.mount("http://", adapter)
         session.mount("https://", adapter)
         return session
-
-    def clear_cache(self) -> None:  # pragma: no cover - no caching yet
-        """Clear cached badge data (placeholder for future use)."""
 
     def get_trading_card_badge_game_ids(self, steam_id: str) -> set[int]:
         """Return app IDs that appear in the user's trading-card badge catalog."""
@@ -118,11 +127,15 @@ class BadgeService:
         return filtered
 
     def get_cards_remaining(self, steam_id: str) -> dict[int, int]:
-        """Public API: return a map of app_id -> cards_remaining for the given user."""
-        return self._fetch_cards_remaining(steam_id)
+        """Public API: return a map of app_id -> cards_remaining for the given user.
 
-    def _fetch_cards_remaining(self, steam_id: str) -> dict[int, int]:
-        badges = self._fetch_badges(steam_id)
+        Always bypasses the badge cache so before/after snapshot callers get
+        authoritative, up-to-the-moment counts instead of stale cached data.
+        """
+        return self._fetch_cards_remaining(steam_id, use_cache=False)
+
+    def _fetch_cards_remaining(self, steam_id: str, *, use_cache: bool = True) -> dict[int, int]:
+        badges = self._fetch_badges(steam_id, use_cache=use_cache)
         cards_remaining: dict[int, int] = {}
 
         for badge in badges:
@@ -157,9 +170,17 @@ class BadgeService:
 
         return cards_remaining
 
-    def _fetch_badges(self, steam_id: str) -> list[dict[str, Any]]:
+    def _fetch_badges(self, steam_id: str, *, use_cache: bool = True) -> list[dict[str, Any]]:
         if not self.settings.steam_api_key:
             raise BadgeServiceError("Steam API key required to check trading-card drop progress")
+
+        # Serve from the short-lived cache so the filtering pipeline's repeated
+        # catalog + drop checks don't each re-fetch the full badge list. Disabled
+        # by callers that need authoritative fresh data (get_cards_remaining).
+        if use_cache:
+            cached = self._badges_cache.get(steam_id)
+            if cached is not None and (time.time() - cached[0]) < self._badges_cache_ttl:
+                return cached[1]
 
         params = {
             "key": self.settings.steam_api_key,
@@ -189,4 +210,5 @@ class BadgeService:
         if not isinstance(badges, list):
             raise BadgeServiceError("Invalid badge list in badge API response")
 
+        self._badges_cache[steam_id] = (time.time(), badges)
         return badges

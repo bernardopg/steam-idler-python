@@ -1,356 +1,180 @@
-# Commit notes: robust Steam card-drop reporting
+# Commit notes: optimize refresh filtering, reports, and shell UX
 
 ## Suggested commit message
 
 ```text
-fix: detect card drops from Steam inventory snapshots
+perf: optimize refresh filtering and shell UX
 
-Track Steam trading-card inventory assets before and after idling so the
-session report counts real card drops even when badge-page card counts lag.
-Also harden local configuration loading, browser-cookie recovery, and test
-environment isolation.
+Cache Steam badge payloads and short-lived positive drop verdicts during a
+session, reduce repeated refresh log noise, and rotate out games whose known
+remaining drops were confirmed by inventory before badge pages catch up. Improve
+the terminal runner and clarify inventory-vs-badge drop sources in reports.
 ```
 
 ## Executive summary
 
-This change fixes the case where Steam shows new card drops in the account inventory, but the bot reports `0 card(s)` because the badge/card-count pages still show the same `cards remaining` values after the run.
+This change addresses two problems observed from the latest `logs/runs/` output:
 
-The bot now uses two independent signals:
+1. The bot repeatedly re-ran the same expensive selection pipeline every refresh interval even when candidate inputs did not change.
+2. The final report could look inconsistent when Steam badge/scraper counts lagged behind inventory: e.g. `Cards: 2 → 2` while inventory confirmed a drop.
 
-1. Badge/drop count delta: `cards_before - cards_after`.
-2. Direct inventory delta: newly observed Steam inventory assets under app `753`, context `6`, filtered to trading cards and grouped by the idled game app IDs.
+The updated behavior keeps correctness conservative while improving runtime efficiency and shell UX:
 
-The reported drops per game are now:
+1. `BadgeService` caches full badge API payloads briefly in memory for filtering calls.
+2. `CardDropChecker` caches positive "has drops" verdicts briefly in memory so active games are not re-scraped every refresh.
+3. Refresh-time progress logs are demoted to DEBUG via `GameManager.get_games_to_idle(..., quiet=True)`.
+4. Inventory snapshots update mid-session: when inventory-confirmed drops equal all known remaining cards for an idled game, that game is excluded from the next refresh so another candidate can take its slot even if badge pages lag.
+5. `IdleTracker` reports the source of each drop total (`remaining-count`, `inventory`, or `count+inventory`) and explicitly explains badge-count lag.
+6. `./run.sh` now has a clearer terminal UX while preserving signal correctness.
 
-```text
-max(cards_before - cards_after, inventory_drops)
-```
+## User-visible impact
 
-This preserves the old behavior when badge counts are reliable and fixes badge-lag cases by using the inventory as the source of truth for newly acquired items.
+- Refresh cycles produce far less repeated INFO noise when the selected games do not change.
+- Sessions with short refresh intervals avoid redundant badge-page scraping for games just confirmed to still have drops.
+- Long sessions can rotate out games that have already dropped all known remaining cards according to inventory.
+- Reports no longer look contradictory when `Cards: before → after` did not decrease but inventory confirmed drops.
+- Terminal runs are easier to read: banner, log path, quiet preflight sync, clear Ctrl+C instruction, and success/failure footer.
+- The first startup scan remains fully informative at INFO level; warnings and errors are never hidden.
 
-## User-visible bug fixed
+## Root cause
 
-Observed behavior:
+The run logs showed the same candidate set being recomputed repeatedly. Each refresh re-fetched badge data and re-scraped badge pages even though no inputs had changed. Steam badge pages can also lag behind inventory, so a game can be effectively drained while the badge page still reports stale remaining-count text. The drop totals were correct because inventory is authoritative for newly acquired cards, but the report did not identify that source clearly.
 
-- A real 10-minute farm completed successfully.
-- Steam showed `6` new trading-card items in the account inventory.
-- The bot report showed `Total dropped: 0 card(s)`.
+## Technical changes
 
-Root cause:
+### `src/steam_idle_bot/steam/badges.py`
 
-- The report inferred drops only from the difference between badge-page `cards remaining` counts before and after idling.
-- Steam inventory updated with new items, but the badge/drop-count pages still returned unchanged values during the post-run verification window.
-- Therefore the bot saw `3 -> 3`, `2 -> 2`, etc. and reported no drops, even though inventory had new assets.
+- Added a short in-memory `_badges_cache` keyed by Steam ID.
+- Filtering paths reuse cached badge payloads within the TTL.
+- `get_cards_remaining()` bypasses the cache via `use_cache=False` so before/after snapshots remain fresh.
+- `clear_cache()` now clears the badge cache.
 
-Correct behavior after this patch:
+### `src/steam_idle_bot/steam/card_drops.py`
 
-- The bot snapshots the trading-card inventory before idling.
-- The bot snapshots it again when the run stops and again after the configured post-run verification delay.
-- New trading-card assets whose `Game` tag matches one of the idled app IDs are counted as drops.
-- Reports include an `Inventory drops: +N` detail line when inventory detection contributed to the result.
+- Added `_has_drops_cache`, a short-lived positive verdict cache keyed by normalized Steam ID and app ID.
+- Positive verdicts are cached only in memory and only briefly; they are not persisted because drop counts decrease while idling.
+- Persistent no-drop cache behavior remains unchanged.
 
-## Evidence gathered
+### `src/steam_idle_bot/steam/games.py`
 
-Real farm run:
+- Added `quiet=True` mode to demote repeated refresh progress logs from INFO to DEBUG.
+- Added `session_exclude_app_ids` so the orchestrator can exclude games drained during the current session without mutating persistent settings.
 
-- Command:
-  - `./run.sh --duration-minutes 10 --post-run-verify-seconds 30`
-- Log:
-  - `logs/runs/run_20260626_195250Z.log`
-- Report:
-  - `logs/idle_report_20260626_170405.txt`
-- Filtering log:
-  - `logs/game_filtering_20260626_170130.json`
+### `src/steam_idle_bot/main.py`
 
-Run result:
+- Refresh calls now use `quiet=True` and pass session-only drained exclusions.
+- Added `_capture_inventory_progress()` for mid-session inventory checks.
+- If inventory-confirmed drops meet or exceed `cards_before`, the app ID is added to `_session_drained_app_ids` for refresh-time rotation.
+- Final inventory capture reuses the same progress helper with final reporting enabled.
 
-- Exit code: `0`
-- Errors: `0`
-- Warnings: `0`
-- Tracebacks: `0`
-- Auth failures: `0`
-- Native idling starts/stops matched: `12/12`
-- Steam community session verified.
-- Badge/drop scraping found active games with remaining drops.
-- Old reporting path still reported `0` because all badge counts were unchanged.
+### `src/steam_idle_bot/utils/idle_tracker.py`
 
-Screenshot evidence provided by the user:
+- Added `remaining_count_drops`, `drop_source`, and `count_lagged_inventory` helpers.
+- Report summary tables now include a drop source column.
+- Detailed breakdown explicitly explains when inventory is used because badge/scraper counts lagged.
+- Structured snapshots now include `drop_source` and `count_lagged_inventory`.
 
-- File:
-  - `/home/bitter/.cache/dms/clipboard/1782505121948980347.png`
-- The Steam UI showed `Seus novos itens (6)` / `Your new items (6)`.
-- Visible card examples included:
-  - `Hunted` — Call of Duty: Black Ops III
-  - `Flower` — Reflex
-  - `Joe (Trading Card)` / `Joe (Carta Colecionável)` — Mr. Prepper
-  - `ULTAKAAR III (4/5)`
-  - `ULTAKAAR IV (4/5)`
-  - one partially visible `CONC...` card, consistent with current QUICKERFLAK/CONCLAVE inventory entries
+### `run.sh`
 
-Inventory endpoint validation:
-
-- Endpoint shape validated against the real account:
-  - `https://steamcommunity.com/inventory/<steam_id>/753/6`
-- The endpoint returns each inventory item with:
-  - `assetid`
-  - `classid`
-  - `instanceid`
-  - item `name`
-  - tags including `Game=app_<appid>`
-  - `item_class_2 = Trading Card`
-- This gives a reliable before/after signal for newly acquired cards.
-
-Note: no credentials, cookies, API keys, passwords, or token values are documented here.
-
-## Files changed
-
-### Runtime scripts
-
-- `run.sh`
-- `run-gui.sh`
-
-Purpose:
-
-- Avoid stale exported app environment variables overriding repository `.env` values during normal local runs.
-- Preserve explicit opt-out with:
-  - `STEAM_IDLE_PRESERVE_ENV=1 ./run.sh ...`
-
-Why:
-
-- The shell had stale variables such as browser/cookie/post-run settings.
-- Direct `python -m ...` sees those variables because Pydantic env vars override `.env`.
-- The project scripts should be the reliable entrypoints for normal operation, so they now clear known app-specific variables before loading settings unless explicitly told not to.
-
-### Configuration loading
-
-- `src/steam_idle_bot/config/settings.py`
-
-Purpose:
-
-- Prevent `.env` cookie maps from being merged into explicit runtime/GUI cookie maps.
-
-Why:
-
-- For `dict` fields, Pydantic settings can merge complex values from multiple sources.
-- For `steam_web_cookies`, merge semantics are unsafe: a fresh explicit `steamLoginSecure` could be combined with stale `.env` cookie fields.
-- The settings initializer now treats explicit `steam_web_cookies` as authoritative for that field.
-
-### Main orchestration
-
-- `src/steam_idle_bot/main.py`
-
-Purpose:
-
-- Persist recovered browser cookies safely.
-- Initialize inventory reader when authenticated web session is available.
-- Capture inventory before and after idling.
-- Detect newly acquired trading-card assets and record them in the session tracker.
-- Improve badge/scraper logging so counts are attributed to the correct source.
-
-Important implementation notes:
-
-- Browser-cookie recovery now persists only the `STEAM_WEB_COOKIES` line instead of serializing all settings.
-- This avoids accidentally writing temporary CLI flags like `--max-games` or `--duration-minutes` into `.env`.
-- Inventory drops are filtered to the app IDs actually idled in the current session.
-
-### New inventory service
-
-- `src/steam_idle_bot/steam/inventory.py`
-
-Purpose:
-
-- Read Steam trading-card inventory via app `753`, context `6`.
-- Extract only items tagged as trading cards.
-- Map each card to a game app ID through the `Game=app_<appid>` tag.
-- Compare asset IDs before/after and group newly acquired cards by app ID.
-
-Operational detail:
-
-- Uses `count=2000` per inventory page.
-- `count=5000` was tested and rejected by Steam with HTTP 400.
-
-### Session reporting
-
-- `src/steam_idle_bot/utils/idle_tracker.py`
-
-Purpose:
-
-- Track `inventory_drops` per game.
-- Count inventory-confirmed drops even when badge counts do not change.
-- Include `inventory_drops` in structured snapshots and reports.
-
-Report behavior:
-
-- If badge counts say `3 -> 3` but inventory gained one card for that app, the report shows:
-  - `Cards: 3 -> 3 (+1 drop(s))`
-  - `Inventory drops: +1`
+- Added a compact startup banner and exit footer with elapsed time and log path.
+- Preserved the FIFO/tee design so Python is not the head of a pipeline and Ctrl+C reaches the bot.
+- Replaced race-prone `mktemp -u` FIFO creation with a private `mktemp -d` directory.
+- Made `uv sync` quiet by default, with `STEAM_IDLE_RUNNER_VERBOSE=1` to show output and `STEAM_IDLE_SKIP_SYNC=1` for quick local smoke tests.
+- Kept `.env` precedence behavior and documented `STEAM_IDLE_PRESERVE_ENV=1`.
 
 ### Tests
 
-- `tests/conftest.py`
-- `tests/unit/test_inventory.py`
-- `tests/unit/test_idle_tracker.py`
-- `tests/unit/test_main_extra.py`
-- `tests/unit/test_settings.py`
+- Added `tests/unit/test_efficiency_caches.py` for badge caching, positive drop caching, and quiet logging behavior.
+- Added coverage for session-only excludes and inventory-driven rotation.
+- Added/updated coverage for report drop sources and `run.sh` runner invariants.
+- Updated test doubles to match the expanded `get_games_to_idle(..., quiet=False, session_exclude_app_ids=None)` contract.
 
-Purpose:
+### Documentation
 
-- Isolate tests from real host `.env` and exported credentials/settings.
-- Cover explicit cookie-map precedence over `.env`.
-- Cover safe persistence of recovered cookies without rewriting unrelated `.env` settings.
-- Cover inventory parser and new-asset detection.
-- Cover report behavior when badge counts lag but inventory shows new drops.
+- Updated `README.md` test badge, feature table, and runner notes.
+- Updated English and Portuguese README architecture/usage/report sections.
+- Updated English, Portuguese, and compatibility Usage guides.
+- Updated `CLAUDE.md` architecture/runner notes for future coding agents.
 
 ## Validation performed
 
-Full test suite:
+Run after implementation and documentation edits:
 
 ```bash
-uv run pytest -q
+uv run pytest -q tests/unit/
 ```
 
 Result:
 
 ```text
-546 passed in 74.19s (0:01:14)
+560 passed in 69.75s (0:01:09)
+FINAL_EXIT:0
 ```
 
-Lint:
+Focused checks already run for the runner/report changes:
 
 ```bash
-uv run ruff check .
+bash -n run.sh
+shellcheck run.sh
+uv run pytest -q tests/unit/test_signal_integration.py tests/unit/test_idle_tracker.py
+uv run ruff check src/steam_idle_bot/utils/idle_tracker.py tests/unit/test_idle_tracker.py tests/unit/test_signal_integration.py
+STEAM_IDLE_SKIP_SYNC=1 STEAM_IDLE_PRESERVE_ENV=1 USERNAME=test_user PASSWORD=*** GAME_APP_IDS=10 FILTER_TRADING_CARDS=false USE_OWNED_GAMES=false ./run.sh --dry-run --no-trading-cards --max-games 1
 ```
 
-Result:
+Results:
 
 ```text
-All checks passed!
+bash -n: passed
+shellcheck: passed
+targeted pytest: 14 passed
+ruff: All checks passed
+run.sh smoke: passed, exit 0
 ```
 
-Type check:
+Static checks expected before commit:
 
 ```bash
+uv run ruff check src/steam_idle_bot/ tests/unit/test_efficiency_caches.py tests/unit/test_games.py tests/unit/test_idle_tracker.py tests/unit/test_main_cli.py tests/unit/test_main_extra.py tests/unit/test_signal_integration.py tests/unit/test_steam_idle_bot.py
 uv run mypy src
 ```
 
-Result:
+## Security and privacy notes
 
-```text
-Success: no issues found in 23 source files
-```
+- No credentials, cookies, API keys, passwords, or token values are included in this note.
+- The change does not read or commit `.env`.
+- Inventory handling continues to use the existing authenticated web session and records only card metadata already used for reporting.
+- Staged files should be controlled explicitly; do not use broad `git add -A` in this repo.
 
-Real inventory endpoint validation:
-
-- Confirmed the real Steam inventory endpoint returns trading cards and app IDs.
-- Confirmed active idled apps are visible in the inventory with expected card names.
-- No secrets were printed or recorded.
-
-Real smoke run after the inventory patch:
-
-```bash
-./run.sh --duration-minutes 1 --max-games 1 --post-run-verify-seconds 5
-```
-
-Result:
-
-- Exit code: `0`
-- Steam local backend connected.
-- Steam community session verified.
-- Initial inventory snapshot captured successfully:
-  - `Captured initial trading-card inventory snapshot with 148 cards`
-- Native idling started and stopped successfully.
-- Final inventory snapshot captured successfully.
-- No new card dropped during this 1-minute smoke run, which is expected:
-  - `Detected 0 new trading-card inventory drops`
-- Report generated successfully.
-
-## Security / privacy notes
-
-- `.env` contains local credentials/cookies and must not be committed.
-- This commit should not include:
-  - `.env`
-  - Steam cookies
-  - Steam account secret values
-  - Steam API key
-  - browser cookie exports
-  - raw authentication tokens
-- The diff contains field names and test dummy strings only, not real secret values.
-
-## Known limitations
-
-- The patch cannot retroactively prove which exact `assetid`s were created during the earlier 10-minute run because no pre-run inventory snapshot existed at that time.
-- The screenshot and current inventory explain the mismatch, but precise historical asset deltas require snapshots from future runs.
-- Future runs will have those snapshots and should report this class of drop correctly.
-
-## Suggested commit workflow
-
-Review before staging:
-
-```bash
-git status --short
-git diff --stat
-git diff -- run.sh run-gui.sh src tests COMMIT_NOTES.md
-```
-
-Stage intended files only:
+## Staging plan
 
 ```bash
 git add \
-  run.sh \
-  run-gui.sh \
-  src/steam_idle_bot/config/settings.py \
   src/steam_idle_bot/main.py \
-  src/steam_idle_bot/steam/inventory.py \
+  src/steam_idle_bot/steam/badges.py \
+  src/steam_idle_bot/steam/card_drops.py \
+  src/steam_idle_bot/steam/games.py \
   src/steam_idle_bot/utils/idle_tracker.py \
-  tests/conftest.py \
+  run.sh \
+  tests/unit/test_efficiency_caches.py \
+  tests/unit/test_games.py \
   tests/unit/test_idle_tracker.py \
-  tests/unit/test_inventory.py \
+  tests/unit/test_main_cli.py \
   tests/unit/test_main_extra.py \
-  tests/unit/test_settings.py \
+  tests/unit/test_signal_integration.py \
+  tests/unit/test_steam_idle_bot.py \
+  README.md \
+  docs/en/README.md \
+  docs/en/USAGE.md \
+  docs/pt-br/README.md \
+  docs/pt-br/USAGE.md \
+  docs/USAGE.md \
+  CLAUDE.md \
   COMMIT_NOTES.md
 ```
 
-Commit:
+## Push plan
 
 ```bash
-git commit -m "fix: detect card drops from Steam inventory snapshots" \
-  -m "Track trading-card inventory assets before and after idling so reports count real card drops even when Steam badge counts lag. Harden cookie persistence, script env handling, and test isolation."
-```
-
-Push:
-
-```bash
+git commit -m "perf: optimize refresh filtering and shell UX"
 git push origin main
-```
-
-If using a feature branch instead of pushing directly to `main`:
-
-```bash
-git checkout -b fix/inventory-drop-detection
-git push -u origin HEAD
-```
-
-Then open a PR with the summary and validation above.
-
-## PR body template
-
-```markdown
-## Summary
-- Detect real Steam card drops by comparing trading-card inventory snapshots before/after idling.
-- Count inventory-confirmed drops when badge-page `cards remaining` counts lag.
-- Harden browser-cookie persistence so only `STEAM_WEB_COOKIES` is updated after recovery.
-- Prevent stale exported env vars from overriding `.env` when using `run.sh` / `run-gui.sh`.
-- Isolate tests from the developer machine's real `.env` and environment.
-
-## Root cause
-The previous report logic inferred drops only from badge/drop-count deltas. Steam inventory showed new card assets, but badge pages still returned unchanged counts during post-run verification, so the report showed `0` despite real drops.
-
-## Validation
-- `uv run pytest -q` -> `546 passed`
-- `uv run ruff check .` -> `All checks passed!`
-- `uv run mypy src` -> `Success: no issues found in 23 source files`
-- Real smoke run: `./run.sh --duration-minutes 1 --max-games 1 --post-run-verify-seconds 5` -> exit code `0`, inventory snapshots captured, native idling start/stop OK.
-
-## Security
-No credentials, cookies, API keys, passwords, or tokens are included. `.env` remains untracked/ignored.
 ```

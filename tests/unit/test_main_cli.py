@@ -91,7 +91,7 @@ class DummyGameManager:
         self.badge_service = None
         self._card_counts = {10: 4}
 
-    def get_games_to_idle(self, steam_id):
+    def get_games_to_idle(self, steam_id, *, quiet=False, session_exclude_app_ids=None):
         return list(self.games)
 
 
@@ -220,8 +220,11 @@ def test_run_normal_mode_uses_failover_when_start_idling_fails(monkeypatch):
 def test_main_loop_handles_refresh_and_disconnect(monkeypatch):
     bot = _build_bot()
     bot._stop_event.clear()
+    bot._session_drained_app_ids = {20}
+    observed_excludes = []
 
-    def get_games(_steam_id):
+    def get_games(_steam_id, *, quiet=False, session_exclude_app_ids=None):
+        observed_excludes.append(set(session_exclude_app_ids or set()))
         bot._stop_event.set()
         return [10, 30]
 
@@ -233,6 +236,7 @@ def test_main_loop_handles_refresh_and_disconnect(monkeypatch):
     bot.client.sleep = lambda seconds: None
     bot._main_loop([10, 20])
 
+    assert observed_excludes == [{20}]
     assert bot.client.refresh_calls == [[10, 30]]
 
 

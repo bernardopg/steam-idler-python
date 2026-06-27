@@ -29,8 +29,35 @@ class GameIdleInfo:
     @property
     def cards_dropped(self) -> int:
         """Number of cards dropped for this game."""
-        remaining_delta = 0 if self.cards_before is None or self.cards_after is None else max(0, self.cards_before - self.cards_after)
-        return max(remaining_delta, self.inventory_drops)
+        return max(self.remaining_count_drops, self.inventory_drops)
+
+    @property
+    def remaining_count_drops(self) -> int:
+        """Drops inferred from the before/after remaining-card count."""
+        if self.cards_before is None or self.cards_after is None:
+            return 0
+        return max(0, self.cards_before - self.cards_after)
+
+    @property
+    def drop_source(self) -> str:
+        """Human-readable source used for the final drop count."""
+        remaining_delta = self.remaining_count_drops
+        if self.inventory_drops > remaining_delta:
+            return "inventory"
+        if remaining_delta > 0 and self.inventory_drops > 0:
+            return "count+inventory"
+        if remaining_delta > 0:
+            return "remaining-count"
+        if self.inventory_drops > 0:
+            return "inventory"
+        if self.drop_status_known:
+            return "known-zero"
+        return "unknown"
+
+    @property
+    def count_lagged_inventory(self) -> bool:
+        """Whether badge/scraper counts lagged behind inventory-confirmed drops."""
+        return self.inventory_drops > self.remaining_count_drops
 
     @property
     def drop_status_known(self) -> bool:
@@ -236,12 +263,12 @@ class IdleTracker:
         if games_with:
             lines.append("🎮 GAMES THAT DROPPED CARDS")
             lines.append("-" * 40)
-            lines.append(f"  {'Game':<35} {'Cards':>6} {'Time':>12}")
-            lines.append(f"  {'':<35} {'':>6} {'(minutes)':>12}")
-            lines.append(f"  {'-' * 33}  {'------':>6} {'------------':>12}")
+            lines.append(f"  {'Game':<35} {'Cards':>6} {'Source':>16} {'Time':>12}")
+            lines.append(f"  {'':<35} {'':>6} {'':>16} {'(minutes)':>12}")
+            lines.append(f"  {'-' * 33}  {'------':>6} {'-' * 16:>16} {'------------':>12}")
             for game in games_with:
                 name = game.name if game.name else f"App {game.app_id}"
-                lines.append(f"  {name:<35} {game.cards_dropped:>6} {game.idle_minutes:>12.1f}")
+                lines.append(f"  {name:<35} {game.cards_dropped:>6} {game.drop_source:>16} {game.idle_minutes:>12.1f}")
             lines.append("")
 
         # Games without drops
@@ -275,11 +302,20 @@ class IdleTracker:
             cards_before = game.cards_before if game.cards_before is not None else "?"
             cards_after = game.cards_after if game.cards_after is not None else "?"
             dropped = game.cards_dropped
-            status = "❓ unknown" if not game.drop_status_known else f"✅ +{dropped} drop(s)" if dropped > 0 else "❌ 0 drops"
+            if not game.drop_status_known:
+                status = "❓ unknown"
+            elif dropped > 0 and game.count_lagged_inventory:
+                status = f"✅ +{dropped} drop(s), inventory-confirmed; badge count lagged"
+            elif dropped > 0:
+                status = f"✅ +{dropped} drop(s), source={game.drop_source}"
+            else:
+                status = "❌ 0 drops"
             lines.append(f"  [{game.app_id}] {name}")
             lines.append(f"    Cards: {cards_before} → {cards_after} ({status})")
             if game.inventory_drops:
                 lines.append(f"    Inventory drops: +{game.inventory_drops}")
+            if game.count_lagged_inventory:
+                lines.append("    Note: Steam badge/scraper counts can lag behind inventory; inventory is used for the drop total.")
             lines.append(f"    Time:  {game.idle_minutes:.1f} minutes")
             lines.append("")
 
@@ -322,6 +358,8 @@ class IdleTracker:
                     "cards_after": game.cards_after,
                     "inventory_drops": game.inventory_drops,
                     "cards_dropped": game.cards_dropped,
+                    "drop_source": game.drop_source,
+                    "count_lagged_inventory": game.count_lagged_inventory,
                     "drop_status_known": game.drop_status_known,
                     "idle_minutes": round(game.idle_minutes, 2),
                 }

@@ -80,7 +80,13 @@ class FakeGameManager:
         self.fallback_steam_id = fallback_steam_id
         self.game_names: dict[int, str] = {}
 
-    def get_games_to_idle(self, steam_id: str | None) -> list[int]:
+    def get_games_to_idle(
+        self,
+        steam_id: str | None,
+        *,
+        quiet: bool = False,
+        session_exclude_app_ids: set[int] | None = None,
+    ) -> list[int]:
         self.calls.append(steam_id)
         if not self.results:
             return []

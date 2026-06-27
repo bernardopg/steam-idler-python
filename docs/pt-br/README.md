@@ -18,11 +18,12 @@ title: Steam Idle Bot (PT-BR)
 A maioria dos idlers roda cegamente todos os jogos da biblioteca. Este é **seletivo e preciso**:
 
 - 🎴 **Idle direcionado** — detecta quais jogos têm cartas e quantos drops restam, fazendo idle só desses.
-- 🧠 **Mais rápido a cada execução** — um cache persistente registra os jogos já totalmente farmados. Jogo finalizado nunca volta a dropar, então é pulado para sempre. A primeira varredura é a lenta; as próximas são bem mais rápidas.
+- 🧠 **Mais rápido a cada execução** — caches persistentes pulam jogos totalmente farmados, enquanto caches curtos em memória evitam re-raspar jogos que acabaram de ser confirmados com drops.
 - 🔐 **Vereditos confiáveis** — antes de confiar numa sessão web da Steam, o bot *verifica se ela está realmente logada*. Uma sessão deslogada/expirada é detectada e reportada, em vez de fazer idle de jogos drenados silenciosamente.
 - 🪄 **Autenticação auto-recuperável** — se os cookies configurados não forem uma sessão community válida, ele puxa uma nova de um navegador onde você já está logado na Steam.
 - 🖥️ **Saída legível no terminal** — um painel ao vivo com nomes dos jogos, cartas restantes e tempo de idle, além de um relatório completo ao parar.
 - 🔁 **Dois backends** — o cliente Steam Python embutido (lida com Steam Guard / 2FA) ou delegação a uma instalação local do `steam-utility`, com fallback automático.
+- 🔄 **Rotação durante a sessão** — snapshots de inventário podem provar que um jogo dropou todas as cartas conhecidas antes das páginas de emblemas atualizarem, então o próximo refresh troca o slot.
 - ⚡ **Moderno e testado** — gerenciado por `uv`, ambientes reproduzíveis, suíte de testes completa e checagem de tipos.
 
 ---
@@ -166,8 +167,12 @@ O bot se defende disso automaticamente:
 ./run.sh --max-games 10                    # limita os jogos em idle
 ./run.sh --no-trading-cards                # pula o filtro de cartas (idle da lista crua)
 ./run.sh --keep-completed-drops            # inclui jogos já totalmente farmados
+STEAM_IDLE_SKIP_SYNC=1 ./run.sh            # pula o uv sync pré-execução do runner
+STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh       # mostra a saída do uv sync durante a preparação
 uv run python -m steam_idle_bot --dry-run  # entrada direta do módulo
 ```
+
+O runner de terminal mostra um banner compacto, salva a saída do bot em `logs/runs/run_*.log` e mantém o Python fora de pipeline para o `Ctrl+C` chegar diretamente ao bot. Execuções normais limpam overrides exportados antigos para o `.env` vencer; use `STEAM_IDLE_PRESERVE_ENV=1` quando variáveis exportadas forem intencionais.
 
 ### Flags da CLI
 
@@ -191,16 +196,16 @@ Veja o [Guia de Uso](USAGE.md) para receitas com flags combinadas.
 
 ```text
 jogos possuídos ─▶ tem cartas? ─▶ tem drops restando? ─▶ exclusões ─▶ idle (máx 32)
-                    (catálogo de        (badge API ou
-                     emblemas +          scraping
+                    (catálogo de        (badge API ou       (config +
+                     emblemas +          scraping             drenados na sessão)
                      store API,          autenticado,
                      em cache)           em cache)
 ```
 
 1. **Biblioteca** — buscada via Steam Web API (com nomes), ou sua lista manual.
-2. **Tem cartas** — resolvido pelo catálogo de emblemas, com fallback para a store API; resultados em cache no disco.
-3. **Drops restantes** — preferencialmente da badge API; quando faltam dados, cai para scraping autenticado da página da community. Jogos confirmados *sem* drops vão para o cache e são pulados nas próximas execuções.
-4. **Loop de idle** — começa o idle e re-roda o pipeline a cada ~10 minutos, reconectando (e trocando de backend) quando preciso. Um painel ao vivo e um relatório de sessão mantêm você informado.
+2. **Tem cartas** — resolvido pelo catálogo de emblemas, com fallback para a store API; resultados da store ficam em cache no disco e payloads de emblemas ficam brevemente em cache em memória.
+3. **Drops restantes** — preferencialmente da badge API; quando faltam dados, cai para scraping autenticado da página da community. Jogos confirmados *sem* drops vão para o cache e são pulados nas próximas execuções; jogos recém-confirmados *com* drops são confiados por uma janela curta na sessão para evitar tráfego redundante em refresh.
+4. **Loop de idle** — começa o idle e re-roda o pipeline a cada `REFRESH_INTERVAL_SECONDS`, reconectando (e trocando de backend) quando preciso. Cada refresh também compara o inventário atual com o snapshot pré-run; quando os drops confirmados por inventário igualam todas as cartas restantes conhecidas de um jogo, o app é excluído da próxima seleção para outro candidato ocupar o slot mesmo se as páginas de emblemas da Steam estiverem atrasadas.
 
 Para um mapa mais profundo da arquitetura, veja o [`CLAUDE.md`](../../CLAUDE.md) na raiz do repositório.
 
@@ -222,6 +227,8 @@ Um painel ao vivo durante o idle:
 ```
 
 > Dica: rode com `LOG_LEVEL=INFO` (o padrão) para essa visão limpa. `DEBUG` adiciona linhas verbosas por jogo, úteis só para troubleshooting.
+
+O relatório final agora mostra uma coluna/fonte de drop. `remaining-count` significa que a contagem antes/depois das páginas de emblemas diminuiu; `inventory` significa que o inventário da Steam provou uma carta nova mesmo com a página atrasada; `count+inventory` significa que as duas fontes concordaram. Quando aparecer `Cards: 3 → 3` com drop confirmado por inventário, o relatório explica que a contagem de badge/scraper atrasou e que o inventário foi usado no total.
 
 ---
 

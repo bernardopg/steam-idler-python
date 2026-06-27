@@ -55,6 +55,7 @@ class SteamIdleBot:
         self._steam_id: str | None = None
         self._inventory_reader: SteamTradingCardInventory | None = None
         self._inventory_before: dict[str, InventoryCardDrop] = {}
+        self._session_drained_app_ids: set[int] = set()
         self._stop_event = threading.Event()
         self._force_stop_event = threading.Event()
         self._last_report = ""
@@ -192,13 +193,18 @@ class SteamIdleBot:
                 # Refresh games every refresh_interval seconds
                 if now - last_refresh >= refresh_interval:
                     self.logger.info("Refreshing game status...")
+                    self._capture_inventory_progress()
 
                     # Get fresh games list
                     refreshed_steam_id = self.client.steam_id or steam_id
                     if not refreshed_steam_id:
                         refreshed_steam_id = self.game_manager.resolve_active_steam_id()
 
-                    new_games = self.game_manager.get_games_to_idle(refreshed_steam_id)
+                    new_games = self.game_manager.get_games_to_idle(
+                        refreshed_steam_id,
+                        quiet=True,
+                        session_exclude_app_ids=self._session_drained_app_ids,
+                    )
 
                     if new_games != games:
                         self.logger.info(f"Updating games from {len(games)} to {len(new_games)}")
@@ -421,6 +427,17 @@ class SteamIdleBot:
 
     def _capture_final_inventory(self) -> None:
         """Detect newly acquired trading cards by comparing inventory snapshots."""
+        self._capture_inventory_progress(log_result=True)
+
+    def _capture_inventory_progress(self, *, log_result: bool = False) -> None:
+        """Update inventory-confirmed drops and mark drained games mid-session.
+
+        Steam badge/drop pages can lag behind the inventory endpoint. During a
+        long session, a game may already have dropped all known remaining cards
+        while the badge page still says it has drops. Comparing the live
+        inventory snapshot to the pre-run snapshot lets the refresh loop rotate
+        that game out immediately when ``inventory_drops >= cards_before``.
+        """
         if not self._inventory_reader or not self._steam_id or not self._inventory_before:
             return
         try:
@@ -430,13 +447,22 @@ class SteamIdleBot:
             for app_id, cards in new_by_app.items():
                 total += len(cards)
                 self._idle_tracker.set_inventory_drops(app_id, len(cards))
-            if total:
+                game = self._idle_tracker.games.get(app_id)
+                if game is not None and game.cards_before is not None and len(cards) >= game.cards_before:
+                    if app_id not in self._session_drained_app_ids:
+                        self.logger.info(
+                            "Inventory confirms app %s dropped all %s known remaining card(s); excluding it from the next refresh",
+                            app_id,
+                            game.cards_before,
+                        )
+                    self._session_drained_app_ids.add(app_id)
+            if total and log_result:
                 details = "; ".join(f"{app_id}: " + ", ".join(card.name for card in cards) for app_id, cards in sorted(new_by_app.items()))
                 self.logger.info("Detected %d new trading-card inventory drop(s): %s", total, details)
-            else:
+            elif log_result:
                 self.logger.info("Detected 0 new trading-card inventory drops")
         except Exception as e:
-            self.logger.warning("Could not capture final trading-card inventory snapshot: %s", e)
+            self.logger.warning("Could not capture trading-card inventory progress: %s", e)
 
     def _backfill_drained_final_counts(self) -> None:
         """Set ``cards_after = 0`` for idled games drained during this session.

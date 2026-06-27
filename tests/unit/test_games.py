@@ -192,6 +192,17 @@ def test_exclude_app_ids_removes_games():
     assert games == [220]
 
 
+def test_session_exclude_app_ids_removes_drained_games_before_cap():
+    detector = StubTradingCardDetector({220, 300, 333})
+    badge_service = StubBadgeService({220, 300, 333})
+    settings = make_settings(max_games_to_idle=2)
+    manager = GameManager(settings, cast(TradingCardDetector, detector), badge_service)
+
+    games = manager.get_games_to_idle("123", session_exclude_app_ids={220})
+
+    assert games == [300, 333]
+
+
 def test_clear_cache_propagates_to_services():
     detector = StubTradingCardDetector({220})
     badge_service = StubBadgeService({220})

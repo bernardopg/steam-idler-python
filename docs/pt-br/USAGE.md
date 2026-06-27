@@ -36,6 +36,10 @@ uv run python -m steam_idle_bot --dry-run
 | `--no-trading-cards` | Pula a detecção de cartas e aceita a lista fornecida |
 | `--keep-completed-drops` | Inclui jogos que já esgotaram os drops |
 | `--max-games N` | Sobrescreve o máximo de jogos simultâneos |
+| `--refresh-interval-seconds N` | Re-roda a seleção a cada `N` segundos; refreshes usam logs limpos e caches curtos |
+| `--checkpoint-minutes N` | Escreve checkpoints JSON/Markdown a cada `N` minutos |
+| `--duration-minutes N` | Para o idle automaticamente após `N` minutos |
+| `--post-run-verify-seconds N` | Revalida contagens/inventário após parar para capturar atraso da Steam |
 | `--config PATH` | Carrega configuração de um local personalizado |
 | `--no-cache` | Ignora os caches em disco nesta execução |
 | `--max-checks N` | Para as buscas de cartas após `N` checagens (bibliotecas grandes) |
@@ -50,6 +54,13 @@ Combine flags conforme a sessão:
 # Reduz chamadas de API para bibliotecas massivas
 ./run.sh --max-checks 50 --skip-failures
 
+# Farm cronometrado com chances mais rápidas de rotação e verificação final
+./run.sh --duration-minutes 30 --refresh-interval-seconds 120 --post-run-verify-seconds 30
+
+# Controles do runner: startup mais rápido no desenvolvimento, ou sync verboso
+STEAM_IDLE_SKIP_SYNC=1 ./run.sh --dry-run
+STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh
+
 # Dry-run único com credenciais inline
 USERNAME=foo PASSWORD=bar ./run.sh --dry-run
 ```
@@ -61,6 +72,7 @@ USERNAME=foo PASSWORD=bar ./run.sh --dry-run
 - **Preferido:** copie `.env.example` para `.env` e preencha. **Nunca faça commit do `.env`.**
 - **Precedência:** flags da CLI → variáveis de ambiente → `.env` → padrões.
 - **Para filtrar drops com precisão** você precisa de uma sessão `web:community` autenticada. O caminho mais fácil: fique logado na Steam no navegador e mantenha `AUTO_BROWSER_COOKIES=true` (o padrão). Veja a [seção de Autenticação](README.md#-autenticação--precisão-dos-drops).
+- Os refreshes são otimizados: payloads de emblemas e vereditos positivos de drops ficam brevemente em cache em memória, e snapshots de inventário podem tirar da rotação um jogo cujas cartas restantes conhecidas já caíram antes das páginas de emblemas atualizarem.
 - Um `config.py` legado ainda é lido se existir, mas é desencorajado.
 
 ### Variáveis de ambiente úteis
@@ -72,6 +84,9 @@ USERNAME=foo PASSWORD=bar ./run.sh --dry-run
 | `AUTO_BROWSER_COOKIES` | Auto-recupera uma sessão community válida do seu navegador |
 | `MAX_GAMES_TO_IDLE` | Limita jogos simultâneos (limite da Steam: 32) |
 | `LOG_LEVEL` | `INFO` para saída limpa, `DEBUG` para troubleshooting |
+| `STEAM_IDLE_SKIP_SYNC` | Defina `1` para pular o `uv sync` pré-execução do runner |
+| `STEAM_IDLE_RUNNER_VERBOSE` | Defina `1` para mostrar a saída do `uv sync` enquanto o `./run.sh` prepara o ambiente |
+| `STEAM_IDLE_PRESERVE_ENV` | Defina `1` quando variáveis exportadas devem sobrescrever o `.env` intencionalmente |
 
 ---
 

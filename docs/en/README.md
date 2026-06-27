@@ -18,11 +18,12 @@ title: Steam Idle Bot (EN)
 Most idlers blindly run every game in your library. This one is **selective and accurate**:
 
 - 🎴 **Targeted idling** — detects which games have trading cards and how many drops remain, then idles only those.
-- 🧠 **Gets faster every run** — a persistent cache records games that are fully farmed. A finished game never drops again, so it's skipped forever. The first scan is the slow one; every run after is much faster.
+- 🧠 **Gets faster every run** — persistent no-drop caches skip fully farmed games, while short-lived in-session caches avoid re-scraping games that were just confirmed to still have drops.
 - 🔐 **Trustworthy verdicts** — before relying on a Steam web session, the bot *verifies it's actually logged in*. A logged-out/expired session is detected and reported instead of silently idling drained games.
 - 🪄 **Self-healing auth** — if your configured cookies aren't a valid community session, it can pull a fresh one from a browser you're already signed into Steam with.
 - 🖥️ **Readable terminal UI** — a live panel with game names, cards remaining, and idle time, plus a full session report when you stop.
 - 🔁 **Two backends** — the built-in Python Steam client (handles Steam Guard / 2FA) or delegation to a local `steam-utility` install, with automatic fallback.
+- 🔄 **Rotates mid-session** — inventory snapshots can prove a game dropped all known remaining cards before badge pages update, so the next refresh can swap it out.
 - ⚡ **Modern & tested** — `uv`-managed, reproducible environments, full test suite, type-checked.
 
 ---
@@ -166,8 +167,12 @@ The bot defends against this automatically:
 ./run.sh --max-games 10                    # cap idled games
 ./run.sh --no-trading-cards                # skip card filtering (idle the raw list)
 ./run.sh --keep-completed-drops            # include fully-farmed games
+STEAM_IDLE_SKIP_SYNC=1 ./run.sh            # skip the runner's preflight uv sync
+STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh       # show uv sync output while preparing
 uv run python -m steam_idle_bot --dry-run  # direct module entry
 ```
+
+The terminal runner prints a compact banner, writes bot output to `logs/runs/run_*.log`, and keeps Python out of a shell pipeline so `Ctrl+C` reaches the bot directly. Normal runs clear stale exported Steam Idle Bot environment overrides so `.env` wins; set `STEAM_IDLE_PRESERVE_ENV=1` when exported variables are intentional.
 
 ### CLI flags
 
@@ -191,15 +196,15 @@ See the [Usage Guide](USAGE.md) for combined-flag recipes.
 
 ```text
 owned games ─▶ has trading cards? ─▶ drops remaining? ─▶ exclusions ─▶ idle (max 32)
-                 (badge catalog            (badge API or
-                  + store API,              authenticated
+                 (badge catalog            (badge API or       (config +
+                  + store API,              authenticated        session-drained)
                   cached)                   scraping, cached)
 ```
 
 1. **Library** — fetched via the Steam Web API (with names), or your manual list.
-2. **Has cards** — resolved from the badge catalog, with a store-API fallback; results cached on disk.
-3. **Drops remaining** — preferred from the badge API; when it lacks data, falls back to authenticated community-page scraping. Games confirmed *without* drops are cached and skipped on future runs.
-4. **Idle loop** — starts idling, then re-runs the pipeline every ~10 minutes, reconnecting (and failing over backends) as needed. A live status panel and an end-of-session report keep you informed.
+2. **Has cards** — resolved from the badge catalog, with a store-API fallback; store results are cached on disk and badge payloads are cached briefly in memory.
+3. **Drops remaining** — preferred from the badge API; when it lacks data, falls back to authenticated community-page scraping. Games confirmed *without* drops are cached and skipped on future runs; games recently confirmed *with* drops are trusted for a short in-session window to avoid redundant refresh traffic.
+4. **Idle loop** — starts idling, then re-runs the pipeline every `REFRESH_INTERVAL_SECONDS`, reconnecting (and failing over backends) as needed. Each refresh also compares current inventory to the pre-run snapshot; when inventory-confirmed drops equal all known remaining cards for a game, that app is excluded from the next selection so another candidate can take its slot even if Steam badge pages lag.
 
 For a deeper architectural map, see [`CLAUDE.md`](../../CLAUDE.md) in the repo root.
 
@@ -221,6 +226,8 @@ A live panel while idling:
 ```
 
 > Tip: run with `LOG_LEVEL=INFO` (the default) for this clean view. `DEBUG` adds verbose per-game lines, useful only for troubleshooting.
+
+The final session report now shows a drop **Source**. `remaining-count` means before/after badge-page counts decreased; `inventory` means Steam inventory proved a new card even if badge pages lagged; `count+inventory` means both sources agreed. When you see `Cards: 3 → 3` with an inventory-confirmed drop, the report explains that the badge/scraper count lagged and inventory was used for the total.
 
 ---
 
