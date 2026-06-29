@@ -20,7 +20,7 @@ dependencies = [
     # actionable here and are dismissed as tolerable_risk: the bot only
     # deserializes protobuf/JSON from authenticated Steam servers over TLS, so
     # the DoS vectors require untrusted input that never reaches it.
-    "protobuf>=3.20,<4",
+    "protobuf>=3.20,<8",
     "pydantic>=2.13",
     "pydantic-settings>=2.14",
     "requests>=2.34",
