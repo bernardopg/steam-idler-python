@@ -20,6 +20,9 @@ All commands run through `uv` (it auto-syncs the environment).
 STEAM_IDLE_SKIP_SYNC=1 ./run.sh --dry-run  # skip runner uv sync for quick local smoke tests
 STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh       # show uv sync output during runner preflight
 ./run-gui.sh                    # launch the Tkinter GUI (== python -m steam_idle_bot --gui)
+./run-web.sh                    # launch the web UI (== python -m steam_idle_bot --web); builds frontend/ on demand
+# Frontend dev loop (Vite dev server proxying /api to a running --web backend):
+#   cd frontend && npm install && npm run dev
 
 # Direct module entry (needs src/ on PYTHONPATH, which run.sh sets)
 uv run python -m steam_idle_bot [args]
@@ -80,6 +83,17 @@ The three services are distinct: `TradingCardDetector` = *does this game have ca
 `IdleTracker` reports the source of each drop count: `remaining-count` (before/after card count decreased), `inventory` (inventory confirmed cards while badge/scraper count lagged), or `count+inventory` (both sources agree). This avoids misleading report lines like `Cards: 3 → 3 (+1)` without explaining that inventory was the authoritative source.
 
 `run.sh` is part of the terminal UX contract: it prints a compact banner, writes bot output to `logs/runs/run_*.log`, uses a FIFO/tee setup so Python is not the head of a shell pipeline and Ctrl+C reaches the bot directly, clears stale exported bot env vars by default so `.env` wins, and supports `STEAM_IDLE_PRESERVE_ENV=1`, `STEAM_IDLE_SKIP_SYNC=1`, and `STEAM_IDLE_RUNNER_VERBOSE=1`.
+
+### Web UI
+`webapi/` is the recommended graphical frontend: `controller.py` (`BotController`) owns the bot
+worker thread (same pattern as the GUI: `report_callback`, `auth_code_provider` blocking on an
+Event, per-run transcript under `logs/runs/`) plus a sequenced event ring buffer; `server.py`
+(`create_app`/`launch_web`) exposes REST (`/api/status|settings|bot/start|bot/stop|auth-code|
+stop-app-ids|report`) + WebSocket `/api/ws` (init payload, then log/status/report/auth events and
+periodic snapshots), and serves the built React app from `frontend/dist`. The frontend
+(React 19 + Vite + TypeScript + Tailwind 4, dark emerald theme) lives in `frontend/`;
+`test_webapi.py` enforces parity between the React settings form and `Settings` fields.
+Settings PUT masks/reuses the saved password and tolerates CSV list fields.
 
 ### GUI
 `gui.py` (`SteamIdleBotGUI`) runs the bot on a worker thread, routes logs through a `QueueLogHandler`, handles Steam Guard code requests via dialogs, and persists settings with `save_to_env_file()`. Dark-themed (Tokyo Night palette) with collapsible form sections, color-coded log output (INFO/WARNING/ERROR/DEBUG/SUCCESS tags), auto-scroll toggle, and keyboard shortcuts (`Ctrl+Enter` start, `Escape` stop, `Ctrl+L` clear logs, `Ctrl+S` save settings). All CLI flags have GUI equivalents including `Keep completed drops`, `Dry run`, and `Stop App IDs` maintenance.

@@ -52,6 +52,22 @@ docs/CHANGELOG updated, no committed secrets/artifacts, reviewed & merged to `ma
 - [x] 🧪 🟧 run.sh signal-forwarding integration tests
 - [x] 📚 🟩 Document expected empty Badge-API card-drop responses
 
+### Sprint 6 — Full audit (2026-07-03)
+- [x] 🐛 🟥 Terminal color was silently disabled under `run.sh` (FIFO ≠ TTY → rich dropped ANSI). Fixed via `FORCE_COLOR=1` + ANSI-stripped run log
+- [x] ✨ 🟧 A2: exponential backoff + jitter on reconnect storms (10s → 5 min cap, reset on success)
+- [x] ✨ 🟩 Status panel reprinted every refresh so idle-time columns stay live
+- [x] 🧪 🟧 G1: CI coverage floor (`--cov-fail-under=85`; suite currently at 90%)
+- [x] 🧪 🟧 G2: `pytest-timeout` (120s, thread method — signal timeouts don't fire in gevent)
+- [x] 🧱 🟩 G3: `ruff check` + `ruff format --check` + `mypy` as CI gates (CI previously ran *only* pytest)
+- [x] ✨ 🟥 F1 groundwork: hatchling build system, `steam-idle-bot` entry point, full PyPI metadata
+- [x] 🧱 🟧 Bounded `DetailedLogger` outputs (last 500 append entries; 50 filtering snapshots)
+
+### Sprint 7 — Web UI (2026-07-03)
+- [x] ✨ 🟥 FastAPI + React web UI (`--web` / `run-web.sh`): live WebSocket dashboard, full settings
+      editor (.env persist, masked password), streamed logs, session report, Steam Guard dialog.
+      Emerald/dark-green minimalist theme. React 19 + Vite 8 + TS 6 + Tailwind 4; deps at latest.
+- [x] 🧪 🟧 20 backend tests (`test_webapi.py`) incl. React-form ⇄ `Settings` parity check
+
 ---
 
 ## 🎯 Product backlog (prioritized)
@@ -59,8 +75,8 @@ docs/CHANGELOG updated, no committed secrets/artifacts, reviewed & merged to `ma
 ### EPIC A — Reliability & resilience
 | ID | Type | Item | Impact | Effort | Priority | Status |
 |----|------|------|:------:|:------:|:--------:|:------:|
-| A1 | 🧪 | Raise coverage on `steam_utility.py` (56%) and `client.py` (79%) | 🟧 | M | P1 | ⬜ |
-| A2 | ✨ | Exponential backoff + jitter on reconnect storms | 🟧 | S | P2 | ⬜ |
+| A1 | 🧪 | Raise coverage on `client.py` (79%), `inventory.py` (80%), `games.py` (83%) | 🟧 | M | P2 | ⬜ |
+| A2 | ✨ | Exponential backoff + jitter on reconnect storms | 🟧 | S | — | ✅ |
 | A3 | 🧱 | Structured health metrics (uptime, reconnects, drops/hr) exposed to the panel | 🟩 | M | P3 | ⬜ |
 | A4 | 🐛 | Detect & recover from a silently-killed steam-utility child mid-session | 🟧 | M | P2 | ⬜ |
 
@@ -81,9 +97,10 @@ docs/CHANGELOG updated, no committed secrets/artifacts, reviewed & merged to `ma
 ### EPIC D — UX (terminal & GUI)
 | ID | Type | Item | Impact | Effort | Priority | Status |
 |----|------|------|:------:|:------:|:--------:|:------:|
-| D1 | 🧪 | GUI test coverage (currently 11%) — extract logic from Tkinter | 🟧 | L | P1 | ⬜ |
-| D2 | ✨ | Live-updating terminal panel (in-place refresh, not reprint) | 🟩 | M | P3 | ⬜ |
+| D1 | 🧱 | Split `gui.py` (1 359 lines, 93% covered) into view/controller modules | 🟧 | M | P2 | ⬜ |
+| D2 | ✨ | Live in-place terminal panel via `rich.live.Live` writing to `/dev/tty` (survives the run.sh FIFO redirect; falls back to periodic reprint when no TTY) | 🟩 | M | P3 | ⬜ |
 | D3 | ✨ | GUI: per-game drop progress bars + ETA | 🟩 | M | P3 | 🧊 |
+| D4 | 🧱 | Default `LOG_FILE` (`steam_card_idler.log`) should live under `logs/`, not the repo root | 🟩 | S | P2 | ⬜ |
 
 ### EPIC E — Observability & reporting
 | ID | Type | Item | Impact | Effort | Priority | Status |
@@ -94,22 +111,22 @@ docs/CHANGELOG updated, no committed secrets/artifacts, reviewed & merged to `ma
 ### EPIC F — Packaging & distribution
 | ID | Type | Item | Impact | Effort | Priority | Status |
 |----|------|------|:------:|:------:|:--------:|:------:|
-| F1 | ✨ | Publish to PyPI (`pipx install steam-idle-bot`) | 🟥 | M | P1 | ⬜ |
+| F1 | ✨ | Publish to PyPI (`pipx install steam-idle-bot`) — packaging metadata + entry point shipped in Sprint 6; remaining: release workflow + first upload | 🟥 | S | P1 | 🟡 |
 | F2 | ✨ | Official Docker image + compose for headless 24/7 idling | 🟧 | M | P2 | ⬜ |
 | F3 | 📚 | Release automation (tagged builds, changelog extraction) | 🟧 | S | P2 | ⬜ |
 
 ### EPIC G — Quality & testing
 | ID | Type | Item | Impact | Effort | Priority | Status |
 |----|------|------|:------:|:------:|:--------:|:------:|
-| G1 | 🧪 | Enforce a coverage floor in CI (e.g. fail < 80%) | 🟧 | S | P1 | ⬜ |
-| G2 | 🧪 | Add `pytest-timeout` to kill hung tests deterministically | 🟧 | S | P1 | ⬜ |
-| G3 | 🧱 | Adopt `ruff format --check` as a CI gate | 🟩 | S | P2 | ⬜ |
+| G1 | 🧪 | Enforce a coverage floor in CI (`--cov-fail-under=85`) | 🟧 | S | — | ✅ |
+| G2 | 🧪 | Add `pytest-timeout` to kill hung tests deterministically | 🟧 | S | — | ✅ |
+| G3 | 🧱 | `ruff check` + `ruff format --check` + `mypy` as CI gates | 🟩 | S | — | ✅ |
 
 ### EPIC H — Security & privacy
 | ID | Type | Item | Impact | Effort | Priority | Status |
 |----|------|------|:------:|:------:|:--------:|:------:|
 | H1 | 🔐 | Optional OS-keyring credential storage (drop plaintext `.env`) | 🟥 | M | P1 | ⬜ |
-| H2 | 🔐 | Redact cookies/tokens in `DetailedLogger` JSON dumps | 🟧 | S | P1 | ⬜ |
+| H2 | 🔐 | Redact steam_id/cookies/tokens in `DetailedLogger` JSON dumps (growth caps shipped in Sprint 6; redaction still open) | 🟧 | S | P1 | ⬜ |
 | H3 | 🔐 | Document & track the accepted `protobuf<4` advisory exceptions | 🟩 | S | P2 | ✅ |
 
 ### EPIC I — Documentation
@@ -128,11 +145,15 @@ docs/CHANGELOG updated, no committed secrets/artifacts, reviewed & merged to `ma
 | R1 | 🟧 | steam-utility reconciliation is Linux-only (`/proc`) | No-op elsewhere; tracked as C2 | ⬜ |
 | R2 | 🟩 | `protobuf<4` pin blocks GHSA-8qvm-5x2c-j2w7 / GHSA-7gcm-g887-7qv7 | Accepted: only trusted Steam data deserialized | ✅ |
 | R3 | 🟧 | Card-drop scraping depends on a short-lived community cookie | Auto browser-cookie recovery; session verify | ✅ |
-| R4 | 🟩 | GUI is largely untested (11% coverage) | Tracked as D1 | ⬜ |
+| R4 | 🟩 | ~~GUI is largely untested~~ GUI now at 93% coverage (171 tests); remaining risk is the 1 359-line monolith | Tracked as D1 | ✅ |
+| R5 | 🟩 | `logs/` accumulates per-run artifacts (`runs/`, checkpoints, reports) with no retention policy beyond DetailedLogger caps | Periodic manual cleanup; candidate for a small janitor on startup | ⬜ |
 
 ---
 
-## 📌 Next sprint candidate (groomed)
+## 📌 Next sprint candidate (groomed 2026-07-03)
 
-Top of queue by impact ÷ effort: **F1** (PyPI), **G1+G2** (coverage floor + test timeout),
-**I2** (troubleshooting matrix), **H2** (redact logger dumps), **C3** (backend conformance tests).
+Top of queue by impact ÷ effort: **F1 finish** (release workflow + first PyPI upload),
+**C3** (backend conformance tests — `protocol.py` already exists, only the suite is missing),
+**H2** (redact logger dumps), **I2** (troubleshooting matrix), **D4** (default log into `logs/`).
+Next after that: **B1** (weekly drop-gate planner — highest-impact open feature) and **D1**
+(split `gui.py`).

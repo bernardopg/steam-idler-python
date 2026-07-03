@@ -8,6 +8,33 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ### Added
 
+- **Web UI** — new FastAPI + React interface (`./run-web.sh` or `python -m steam_idle_bot --web`),
+  replacing the Tkinter GUI as the recommended graphical frontend. Minimalist dark-green/emerald
+  design. Live dashboard (status, account, session time, per-game cards/drops/idle table) streamed
+  over WebSocket, full settings editor persisting to `.env` (password write-only/masked), live
+  color-coded logs with copy/clear/auto-scroll, session report view, and Steam Guard code dialog.
+  Backend: `steam_idle_bot.webapi` (`BotController` worker-thread lifecycle + REST/WS API on
+  port 8765). Frontend: React 19 + Vite 8 + TypeScript 6 + Tailwind 4 under `frontend/`
+  (built assets served by the backend; `run-web.sh` builds on demand). A parity test enforces
+  that the React settings form covers every `Settings` field.
+
+- Runner: **colored terminal output restored** — `run.sh` routes bot output through a FIFO
+  (not a TTY), which made `rich` silently disable all color; the runner now exports
+  `FORCE_COLOR=1` when the real destination is a terminal, and strips ANSI codes from the
+  `logs/runs/` transcript copy so it stays greppable.
+- Reliability: **exponential backoff with jitter** on failed reconnects (10s doubling to a
+  5-minute cap, reset on success) — replaces the fixed 10s cooldown so a Steam outage no
+  longer produces a tight reconnect storm.
+- Terminal panel: the status panel is now **reprinted on every refresh interval** (not only
+  when the game list changes), so the idle-time and session columns stay live.
+- Packaging: `pyproject.toml` gained a **build system (hatchling), `steam-idle-bot` console
+  entry point, license/authors/classifiers/urls** — groundwork for PyPI publication
+  (`pipx install steam-idle-bot`).
+- CI: **ruff lint + format check and mypy** now gate the pipeline; coverage floor enforced
+  with `--cov-fail-under=85`; `pytest-timeout` (120s, thread method) kills hung tests.
+- Logs: `DetailedLogger` outputs are now **bounded** — append-style JSON files keep the last
+  500 entries and `game_filtering_*.json` snapshots are pruned to the newest 50.
+
 - GUI: **dark theme** — full Tokyo Night-inspired dark palette across all widgets (inputs, treeview, tabs, scrollbars, console, report, badges). Log lines color-coded by level (INFO/WARNING/ERROR/DEBUG/SUCCESS).
 - GUI: **keyboard shortcuts** — `Ctrl+Enter` start, `Escape` stop, `Ctrl+L` clear logs, `Ctrl+S` save settings.
 - GUI: **auto-scroll toggle** and **clear buttons** for both Live Logs and Session Report tabs.
