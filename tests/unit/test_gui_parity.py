@@ -12,11 +12,7 @@ def _settings_fields() -> set[str]:
     tree = ast.parse(SETTINGS_PATH.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "Settings":
-            return {
-                item.target.id
-                for item in node.body
-                if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
-            }
+            return {item.target.id for item in node.body if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)}
     raise AssertionError("Settings class not found")
 
 

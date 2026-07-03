@@ -2,6 +2,7 @@
 
 __all__ = ["DetailedLogger"]
 
+import contextlib
 import json
 import logging
 from datetime import datetime
@@ -9,6 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from ..config.settings import Settings
+
+# Retention caps: a 24/7 idler appends to these files on every refresh, so both
+# the append-style JSON arrays and the per-run filtering snapshots are trimmed
+# to keep logs/ bounded.
+_MAX_APPEND_ENTRIES = 500
+_MAX_FILTERING_SNAPSHOTS = 50
 
 
 class DetailedLogger:
@@ -75,7 +82,15 @@ class DetailedLogger:
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(log_data, f, indent=2, ensure_ascii=False)
 
+        self._prune_filtering_snapshots()
         logging.getLogger(__name__).info(f"Detailed filtering log saved to: {filename}")
+
+    def _prune_filtering_snapshots(self) -> None:
+        """Drop the oldest game_filtering_*.json files beyond the retention cap."""
+        snapshots = sorted(self.log_dir.glob("game_filtering_*.json"))
+        for stale in snapshots[:-_MAX_FILTERING_SNAPSHOTS]:
+            with contextlib.suppress(OSError):
+                stale.unlink()
 
     def log_scraping_result(self, app_id: int, steam_id: str, has_drops: bool, content_preview: str = "") -> None:
         """Log individual scraping results."""
@@ -100,6 +115,7 @@ class DetailedLogger:
             existing_data = []
 
         existing_data.append(log_entry)
+        existing_data = existing_data[-_MAX_APPEND_ENTRIES:]
 
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(existing_data, f, indent=2, ensure_ascii=False)
@@ -132,6 +148,7 @@ class DetailedLogger:
             existing_data = []
 
         existing_data.append(log_data)
+        existing_data = existing_data[-_MAX_APPEND_ENTRIES:]
 
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(existing_data, f, indent=2, ensure_ascii=False)

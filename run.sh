@@ -19,6 +19,10 @@ RUN_LOG="$RUNS_DIR/run_$(date -u +"%Y%m%d_%H%M%SZ").log"
 USE_COLOR=0
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   USE_COLOR=1
+  # The bot's stdout/stderr go through a FIFO (not a TTY), which makes rich
+  # disable all color. Since the real destination *is* a terminal, tell rich
+  # to keep ANSI output; the run-log copy is stripped back to plain text below.
+  export FORCE_COLOR=1
 fi
 
 color() {
@@ -124,7 +128,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-tee "$RUN_LOG" < "$FIFO" &
+# The file copy of the transcript is de-ANSI-fied so the log stays greppable
+# even when FORCE_COLOR keeps the terminal copy colored.
+tee >(sed -u -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g' > "$RUN_LOG") < "$FIFO" &
 TEE_PID=$!
 
 STARTED_AT=$(date +%s)

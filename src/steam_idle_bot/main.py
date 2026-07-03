@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import json
+import random
 import signal
 import sys
 import threading
@@ -160,7 +161,11 @@ class SteamIdleBot:
 
         refresh_interval = self.settings.refresh_interval_seconds
         loop_sleep_seconds = 1
-        reconnect_cooldown_seconds = 10
+        # Exponential backoff with jitter so a Steam outage doesn't turn into a
+        # tight reconnect storm (10s → 20s → ... capped at 5 min).
+        reconnect_backoff_base = 10.0
+        reconnect_backoff_max = 300.0
+        reconnect_backoff = reconnect_backoff_base
         next_reconnect_attempt = 0.0
 
         loop_start = time.time()
@@ -216,7 +221,9 @@ class SteamIdleBot:
                         self.client.refresh_games(games)
                         self._idle_tracker.update_games(games, game_names)
 
-                        self._print_status_panel(games)
+                    # Reprint even when the list is unchanged so the panel's
+                    # idle-time and session columns stay live between changes.
+                    self._print_status_panel(games)
                     last_refresh = now
 
                 # Check connection
@@ -227,6 +234,7 @@ class SteamIdleBot:
                     self.logger.warning("Lost connection to Steam, attempting to reconnect...")
                     if self.client.reconnect():
                         self.logger.info("Reconnected to Steam")
+                        reconnect_backoff = reconnect_backoff_base
                         if games:
                             if self.client.start_idling(games):
                                 self.logger.info(
@@ -247,8 +255,10 @@ class SteamIdleBot:
                         ):
                             steam_id = self._resolve_active_steam_id()
                         else:
-                            self.logger.warning("Reconnect attempt failed; retrying shortly")
-                            next_reconnect_attempt = now + reconnect_cooldown_seconds
+                            delay = reconnect_backoff + random.uniform(0, reconnect_backoff * 0.25)
+                            self.logger.warning("Reconnect attempt failed; retrying in %.0fs", delay)
+                            next_reconnect_attempt = now + delay
+                            reconnect_backoff = min(reconnect_backoff * 2, reconnect_backoff_max)
 
             except KeyboardInterrupt:
                 self.logger.info("Received interrupt signal")
@@ -752,6 +762,19 @@ Examples:
     )
 
     parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Launch the web UI (FastAPI + React) instead of the terminal workflow",
+    )
+
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=8765,
+        help="Port for the web UI server (default 8765)",
+    )
+
+    parser.add_argument(
         "--no-cache",
         action="store_true",
         help="Disable persistent trading-card cache",
@@ -896,6 +919,12 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
+        if getattr(args, "web", False) and not getattr(args, "stop_app_ids", None):
+            from .webapi import launch_web
+
+            launch_web(port=getattr(args, "web_port", 8765))
+            return
+
         if args.gui and not getattr(args, "stop_app_ids", None):
             from .gui import launch_gui
 

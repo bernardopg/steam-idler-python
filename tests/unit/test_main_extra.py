@@ -226,6 +226,45 @@ class TestMainLoopReconnect:
         bot._main_loop([570], steam_id="123")
         assert client.reconnect_called[0]
 
+    def test_failed_reconnects_back_off_exponentially(self, monkeypatch):
+        client = DummyClient()
+        client.connected = False
+        attempts: list[float] = []
+        fake_now = [0.0]
+
+        def failing_reconnect():
+            attempts.append(fake_now[0])
+            return False
+
+        client.reconnect = failing_reconnect
+        bot = make_bot(client=client, games=[570])
+        bot.settings.refresh_interval_seconds = 10**9  # keep refresh out of the way
+        import random
+        import time
+
+        monkeypatch.setattr(bot, "_switch_to_steam_utility", lambda *a, **k: False)
+        monkeypatch.setattr(random, "uniform", lambda a, b: 0.0)
+        monkeypatch.setattr(time, "time", lambda: fake_now[0])
+
+        ticks = [0]
+
+        def fast_sleep(seconds):
+            ticks[0] += 1
+            fake_now[0] += 30.0
+            if ticks[0] >= 10:
+                bot._stop_event.set()
+
+        client.sleep = fast_sleep
+        bot._stop_event.clear()
+        bot._main_loop([570], steam_id="123")
+
+        # 10 ticks × 30s of fake time. A fixed 10s cooldown would retry on
+        # every tick; exponential backoff spaces the retries further apart.
+        assert 2 <= len(attempts) < ticks[0]
+        gaps = [later - earlier for earlier, later in zip(attempts, attempts[1:], strict=False)]
+        assert all(b >= a for a, b in zip(gaps, gaps[1:], strict=False))
+        assert gaps[-1] > gaps[0]
+
 
 class TestMainLoopException:
     def test_exception_in_loop_continues(self):

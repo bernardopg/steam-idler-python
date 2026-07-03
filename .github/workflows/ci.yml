@@ -46,6 +46,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      - name: Lint (ruff)
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type-check (mypy)
+        run: uv run mypy src
+
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
@@ -58,7 +66,7 @@ jobs:
         run: |
           Xvfb :99 -screen 0 1024x768x24 &
           sleep 1
-          uv run pytest -q --cov=src/steam_idle_bot --cov-report=xml
+          uv run pytest -q --cov=src/steam_idle_bot --cov-report=xml --cov-fail-under=85
 
       - name: Upload coverage report
         if: always()

@@ -78,4 +78,4 @@ def test_run_sh_is_valid_and_forwards_signals():
     assert "STEAM_IDLE_SKIP_SYNC" in text
     assert "Run log:" in text
     # Python must not be the head of a pipeline, so Ctrl+C reaches it directly.
-    assert "> \"$FIFO\"" in text
+    assert '> "$FIFO"' in text

@@ -20,6 +20,7 @@ from steam_idle_bot.steam.games import GameManager
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
     base: dict[str, Any] = {
         "username": "user",
@@ -34,6 +35,7 @@ def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
 # ---------------------------------------------------------------------------
 # A: BadgeService session cache
 # ---------------------------------------------------------------------------
+
 
 class DummyResponse:
     def __init__(self, data: Any):
@@ -134,6 +136,7 @@ def test_badge_cache_expires(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # B: CardDropChecker has-drops short-TTL cache
 # ---------------------------------------------------------------------------
+
 
 class DropResp:
     def __init__(self, text: str):
@@ -253,6 +256,7 @@ def test_mixed_no_drop_and_has_drops_in_filter(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # D: quiet-mode logging in GameManager
 # ---------------------------------------------------------------------------
+
 
 def _make_game_manager(settings: Settings) -> GameManager:
     """Build a GameManager whose owned-games call is pre-cached to avoid network."""

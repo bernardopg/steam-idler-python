@@ -135,7 +135,7 @@ def test_unauthenticated_session_is_downgraded_and_excludes(tmp_path: Path) -> N
     # Probe returns a logged-out page (no g_steamID/account_pulldown); the gamecards
     # page is an ambiguous badge page that would be INCLUDED if we trusted auth.
     sess = RouteSess(
-        badges_text='<html>g_steamID = false;</html>',
+        badges_text="<html>g_steamID = false;</html>",
         gamecards_text='<div class="badge_gamecard_page"><div class="badge_title_stats_drops"></div></div>',
     )
     with patch(
