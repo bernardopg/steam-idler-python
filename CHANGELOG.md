@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+### Removed
+
+- **Tkinter desktop GUI** (`gui.py`, `run-gui.sh`): the web UI (FastAPI + React) is now the single
+  graphical frontend. `--gui` is deprecated and launches the web UI instead. All GUI features
+  (settings persistence, Steam Guard prompts, dry run, stop-app-ids, live logs/report) already
+  had web UI equivalents via `BotController`.
+
 ### Added
 
 - **Web UI** — new FastAPI + React interface (`./run-web.sh` or `python -m steam_idle_bot --web`),

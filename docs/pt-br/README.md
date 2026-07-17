@@ -61,7 +61,6 @@ A maioria dos idlers roda cegamente todos os jogos da biblioteca. Este é **sele
 
    ```bash
    ./run.sh          # terminal
-   ./run-gui.sh      # GUI desktop (Tkinter)
    ```
 
    Digite o código Steam Guard se solicitado (apenas no backend Python).
@@ -163,7 +162,6 @@ O bot se defende disso automaticamente:
 ```bash
 ./run.sh --dry-run                         # pré-visualiza config + jogos, sem contatar a Steam
 ./run.sh                                   # execução normal (terminal)
-./run-gui.sh                               # GUI desktop
 ./run.sh --max-games 10                    # limita os jogos em idle
 ./run.sh --no-trading-cards                # pula o filtro de cartas (idle da lista crua)
 ./run.sh --keep-completed-drops            # inclui jogos já totalmente farmados
@@ -179,7 +177,7 @@ O runner de terminal mostra um banner compacto, salva a saída do bot em `logs/r
 | Flag | Propósito |
 | --- | --- |
 | `--dry-run` | Imprime config e jogos escolhidos sem contatar a Steam. |
-| `--gui` | Abre a GUI desktop (igual a `./run-gui.sh`). |
+| `--gui` | Descontinuada: abre a web UI (`--web`). |
 | `--no-trading-cards` | Pula a detecção de cartas; usa a lista crua. |
 | `--keep-completed-drops` | Inclui jogos que já esgotaram os drops. |
 | `--max-games N` | Sobrescreve o máximo de jogos simultâneos. |
@@ -254,12 +252,11 @@ Para diagnóstico profundo, defina `LOG_LEVEL=DEBUG` e abra uma [issue](https://
 ```text
 steam-idler-python/
 ├── .env.example
-├── run.sh / run-gui.sh
+├── run.sh / run-web.sh
 ├── pyproject.toml / uv.lock
 ├── src/steam_idle_bot/
 │   ├── __main__.py        # ponto de entrada
 │   ├── main.py            # orquestrador SteamIdleBot
-│   ├── gui.py             # GUI Tkinter
 │   ├── config/            # settings Pydantic
 │   ├── steam/             # backends + serviços de carta/emblema/cookie
 │   └── utils/             # logging, tracker, exceções

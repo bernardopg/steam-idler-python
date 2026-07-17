@@ -15,7 +15,7 @@
 > **Farm Steam playtime and trading-card drops on autopilot.** Steam Idle Bot syncs your
 > library, idles **only** the games that still have cards to drop, and remembers what's
 > already finished — so every run scans less and starts faster. Live terminal dashboard,
-> optional desktop GUI, two interchangeable idling backends with automatic fallback.
+> web UI, two interchangeable idling backends with automatic fallback.
 
 ---
 
@@ -53,7 +53,7 @@ cp .env.example .env
 # 4. Preview without contacting Steam
 ./run.sh --dry-run
 
-# 5. Run it — terminal, or ./run-gui.sh for the desktop GUI
+# 5. Run it — terminal, or ./run-web.sh for the web UI
 ./run.sh
 ```
 
@@ -92,7 +92,6 @@ Game selection is a **funnel** — each stage narrows the set, capped at Steam's
 ./run.sh --stop-app-ids "570,730"     # stop steam-utility idles for those App IDs and exit
 STEAM_IDLE_SKIP_SYNC=1 ./run.sh       # skip the runner's preflight uv sync
 STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh  # show uv sync output while preparing the environment
-./run-gui.sh                          # desktop GUI
 ```
 
 `./run.sh` keeps the Python bot out of a shell pipeline so `Ctrl+C` reaches it directly, writes bot output to `logs/runs/run_*.log`, and prints a short startup/exit banner. By default it clears stale exported Steam Idle Bot environment overrides so `.env` wins; set `STEAM_IDLE_PRESERVE_ENV=1` when you intentionally want exported variables to override `.env`.

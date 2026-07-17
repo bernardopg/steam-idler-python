@@ -18,7 +18,7 @@ configuration, and architecture, see the [English README](en/README.md).
 ./run.sh
 
 # Desktop GUI
-./run-gui.sh
+./run-web.sh
 
 # Direct module entry
 uv run python -m steam_idle_bot --dry-run
@@ -31,7 +31,7 @@ uv run python -m steam_idle_bot --dry-run
 | Flag | What it does |
 | --- | --- |
 | `--dry-run` | Preview games and settings without touching Steam |
-| `--gui` | Launch the desktop GUI |
+| `--gui` | Deprecated: launches the web UI (`--web`) |
 | `--no-trading-cards` | Skip card detection and accept the supplied game list |
 | `--keep-completed-drops` | Include games that already exhausted their drops |
 | `--max-games N` | Override the maximum number of concurrent games |

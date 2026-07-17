@@ -1,6 +1,6 @@
 """UI-agnostic bot lifecycle controller for the web API.
 
-Mirrors the worker-thread pattern used by the Tkinter GUI: the bot runs on a
+Runs the bot on a worker thread:
 daemon thread, log records and lifecycle events are buffered in a sequenced
 ring buffer that WebSocket clients drain with a cursor, and Steam Guard
 requests block the worker on an Event until the API delivers a code.

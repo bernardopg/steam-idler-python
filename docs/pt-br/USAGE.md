@@ -19,7 +19,7 @@ Sua referência rápida para os comandos do dia a dia do Steam Idle Bot. Para in
 ./run.sh
 
 # GUI desktop
-./run-gui.sh
+./run-web.sh
 
 # Entrada direta do módulo (o run.sh ajusta o PYTHONPATH para você)
 uv run python -m steam_idle_bot --dry-run
@@ -32,7 +32,7 @@ uv run python -m steam_idle_bot --dry-run
 | Flag | O que faz |
 | --- | --- |
 | `--dry-run` | Pré-visualiza jogos e configurações sem tocar na Steam |
-| `--gui` | Abre a GUI desktop (igual a `./run-gui.sh`) |
+| `--gui` | Descontinuada: abre a web UI (`--web`) |
 | `--no-trading-cards` | Pula a detecção de cartas e aceita a lista fornecida |
 | `--keep-completed-drops` | Inclui jogos que já esgotaram os drops |
 | `--max-games N` | Sobrescreve o máximo de jogos simultâneos |

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Steam Idle Bot — automates Steam playtime farming and trading-card drops. Python package `steam_idle_bot` under a `src/` layout, managed with `uv`. Runs as a terminal workflow or a Tkinter GUI.
+Steam Idle Bot — automates Steam playtime farming and trading-card drops. Python package `steam_idle_bot` under a `src/` layout, managed with `uv`. Runs as a terminal workflow or via the web UI (FastAPI + React).
 
 ## Commands
 
@@ -19,7 +19,6 @@ All commands run through `uv` (it auto-syncs the environment).
 ./run.sh --refresh-interval-seconds 300  # re-run the selection pipeline every 5 min
 STEAM_IDLE_SKIP_SYNC=1 ./run.sh --dry-run  # skip runner uv sync for quick local smoke tests
 STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh       # show uv sync output during runner preflight
-./run-gui.sh                    # launch the Tkinter GUI (== python -m steam_idle_bot --gui)
 ./run-web.sh                    # launch the web UI (== python -m steam_idle_bot --web); builds frontend/ on demand
 # Frontend dev loop (Vite dev server proxying /api to a running --web backend):
 #   cd frontend && npm install && npm run dev
@@ -49,7 +48,7 @@ A `.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`) blo
 
 - Config precedence (`settings_customise_sources`): init kwargs → env vars → `.env` → secrets. Custom `FlexibleEnvSettingsSource` / `FlexibleDotEnvSettingsSource` tolerantly parse list fields (`GAME_APP_IDS`, `EXCLUDE_APP_IDS` accept JSON `[570,730]` or CSV `570,730`) and the cookie map (`STEAM_WEB_COOKIES` accepts JSON object, browser-export JSON array, or `k=v; k=v`).
 - `Settings.load_from_file()` also imports a legacy `config.py` if present, mapping its UPPER_CASE names to settings fields.
-- `save_to_env_file()` serializes settings back to `.env` — used by the GUI to persist user changes.
+- `save_to_env_file()` serializes settings back to `.env` — used by the web UI to persist user changes.
 - CLI flags in `main.py` override loaded settings (`--max-games`, `--refresh-interval-seconds`, `--checkpoint-minutes`, `--duration-minutes`, `--post-run-verify-seconds`, `--no-cache`, `--max-checks`, `--skip-failures`, `--keep-completed-drops`, `--no-trading-cards`). `--stop-app-ids "570,730"` is a maintenance mode that stops running steam-utility idles for those App IDs and exits without starting the bot.
 - **Web session auth**: card-drop scraping needs a `web:community` `steamLoginSecure` (see [[steam-web-cookies-community-audience]] memory). `CardDropChecker._verify_session()` probes `/badges/` (checks `g_steamID = "<id>"`) and downgrades to unauthenticated (excluding unknowns + warning) when the session is logged out — preventing the bot from idling drained games on a store-only/expired token. `AUTO_BROWSER_COOKIES=true` (default) makes `main._recover_session_via_browser()` pull a valid community session from a locally logged-in browser via `steam/browser_cookies.py` (`browser_cookie3`, import-guarded; `BROWSER_COOKIES_BROWSER=auto|chrome|firefox|...`) — self-healing as the short-lived community token rotates.
 - **Card counts**: when the badge API returns no `cards_remaining` (common once all badges are completed), `CardDropChecker._extract_drops_remaining()` parses the count from the badge page ("Jogo pode dar mais N cartas" / "N card drops remaining") into `drop_counts`; `main` feeds these into `IdleTracker` for the status panel and session report.
@@ -57,7 +56,7 @@ A `.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`) blo
 
 ## Architecture
 
-Entry: `__main__.py` → `main.main()` parses args, loads `Settings`, then either `launch_gui()` or constructs `SteamIdleBot`.
+Entry: `__main__.py` → `main.main()` parses args, loads `Settings`, then either `launch_web()` (also reached via the deprecated `--gui` flag) or constructs `SteamIdleBot`.
 
 `SteamIdleBot` (`main.py`) is the orchestrator. On construction it wires together the backend client and the three Steam services, then `run()` drives a refresh loop.
 
@@ -78,7 +77,7 @@ Key resilience behavior: if the python backend fails to initialize, login, start
 The three services are distinct: `TradingCardDetector` = *does this game have cards*; `BadgeService` = *badge/cards-remaining via API*; `CardDropChecker` = *drops remaining via scraping*. Authenticated web session from the client is pushed into the scrapers via `set_web_session()` / `set_session()`.
 
 ### Runtime loop & reporting
-`_main_loop()` sleeps in 1s ticks (keeps GUI `stop()` responsive), re-runs the selection pipeline every `refresh_interval_seconds` (default 10 min), and reconnects on dropped connections (with steam_utility fallback). Refresh calls use `GameManager.get_games_to_idle(..., quiet=True)` so repeated unchanged scans log progress at DEBUG while warnings/errors stay visible. During refresh, `_capture_inventory_progress()` compares the current trading-card inventory to the pre-run snapshot; if `inventory_drops >= cards_before` for an idled game, the app ID is added to `_session_drained_app_ids` and excluded from the next selection. `IdleTracker` (`utils/idle_tracker.py`) snapshots cards-remaining before/after and inventory drops to compute drops, and writes a session report to `logs/idle_report_*.txt`. `DetailedLogger` (`utils/detailed_logger.py`) dumps per-stage JSON to `logs/`.
+`_main_loop()` sleeps in 1s ticks (keeps controller `stop()` responsive), re-runs the selection pipeline every `refresh_interval_seconds` (default 10 min), and reconnects on dropped connections (with steam_utility fallback). Refresh calls use `GameManager.get_games_to_idle(..., quiet=True)` so repeated unchanged scans log progress at DEBUG while warnings/errors stay visible. During refresh, `_capture_inventory_progress()` compares the current trading-card inventory to the pre-run snapshot; if `inventory_drops >= cards_before` for an idled game, the app ID is added to `_session_drained_app_ids` and excluded from the next selection. `IdleTracker` (`utils/idle_tracker.py`) snapshots cards-remaining before/after and inventory drops to compute drops, and writes a session report to `logs/idle_report_*.txt`. `DetailedLogger` (`utils/detailed_logger.py`) dumps per-stage JSON to `logs/`.
 
 `IdleTracker` reports the source of each drop count: `remaining-count` (before/after card count decreased), `inventory` (inventory confirmed cards while badge/scraper count lagged), or `count+inventory` (both sources agree). This avoids misleading report lines like `Cards: 3 → 3 (+1)` without explaining that inventory was the authoritative source.
 
@@ -86,7 +85,7 @@ The three services are distinct: `TradingCardDetector` = *does this game have ca
 
 ### Web UI
 `webapi/` is the recommended graphical frontend: `controller.py` (`BotController`) owns the bot
-worker thread (same pattern as the GUI: `report_callback`, `auth_code_provider` blocking on an
+worker thread (`report_callback`, `auth_code_provider` blocking on an
 Event, per-run transcript under `logs/runs/`) plus a sequenced event ring buffer; `server.py`
 (`create_app`/`launch_web`) exposes REST (`/api/status|settings|bot/start|bot/stop|auth-code|
 stop-app-ids|report`) + WebSocket `/api/ws` (init payload, then log/status/report/auth events and
@@ -94,9 +93,6 @@ periodic snapshots), and serves the built React app from `frontend/dist`. The fr
 (React 19 + Vite + TypeScript + Tailwind 4, dark emerald theme) lives in `frontend/`;
 `test_webapi.py` enforces parity between the React settings form and `Settings` fields.
 Settings PUT masks/reuses the saved password and tolerates CSV list fields.
-
-### GUI
-`gui.py` (`SteamIdleBotGUI`) runs the bot on a worker thread, routes logs through a `QueueLogHandler`, handles Steam Guard code requests via dialogs, and persists settings with `save_to_env_file()`. Dark-themed (Tokyo Night palette) with collapsible form sections, color-coded log output (INFO/WARNING/ERROR/DEBUG/SUCCESS tags), auto-scroll toggle, and keyboard shortcuts (`Ctrl+Enter` start, `Escape` stop, `Ctrl+L` clear logs, `Ctrl+S` save settings). All CLI flags have GUI equivalents including `Keep completed drops`, `Dry run`, and `Stop App IDs` maintenance.
 
 ## Conventions
 

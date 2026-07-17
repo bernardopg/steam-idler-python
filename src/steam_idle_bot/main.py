@@ -765,7 +765,7 @@ Examples:
     parser.add_argument(
         "--gui",
         action="store_true",
-        help="Launch the desktop GUI instead of the terminal workflow",
+        help="Deprecated: the Tkinter GUI was removed; launches the web UI instead",
     )
 
     parser.add_argument(
@@ -926,24 +926,13 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        if getattr(args, "web", False) and not getattr(args, "stop_app_ids", None):
+        if args.gui:
+            print("--gui is deprecated: the Tkinter GUI was removed in favor of the web UI. Launching --web...")
+
+        if (getattr(args, "web", False) or args.gui) and not getattr(args, "stop_app_ids", None):
             from .webapi import launch_web
 
             launch_web(port=getattr(args, "web_port", 8765))
-            return
-
-        if args.gui and not getattr(args, "stop_app_ids", None):
-            from .gui import launch_gui
-
-            try:
-                settings = _load_settings_from_args(args)
-            except Exception:
-                settings = None
-            launch_gui(
-                config_path=args.config,
-                initial_settings=settings,
-                initial_dry_run=args.dry_run,
-            )
             return
 
         settings = _load_settings_from_args(args)
@@ -951,16 +940,6 @@ def main() -> None:
         # Maintenance mode: stop idles for specific App IDs and exit.
         if args.stop_app_ids:
             _stop_app_ids(settings, _parse_app_id_list(args.stop_app_ids))
-            return
-
-        if args.gui:
-            from .gui import launch_gui
-
-            launch_gui(
-                config_path=args.config,
-                initial_settings=settings,
-                initial_dry_run=args.dry_run,
-            )
             return
 
         # Create and run bot

@@ -33,7 +33,7 @@
 
     <rect x="704" y="96" width="376" height="92" rx="12" fill="#1b2838" stroke="#3a6a8a"/>
     <text x="722" y="124" class="h" font-size="12">PRESENTATION</text>
-    <text x="722" y="150" class="t" font-size="17">Terminal panel · Tkinter GUI</text>
+    <text x="722" y="150" class="t" font-size="17">Terminal panel · Web UI</text>
     <text x="722" y="174" class="s" font-size="13">live status · session report · checkpoints</text>
   </g>
 
