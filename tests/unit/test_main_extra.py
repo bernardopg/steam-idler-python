@@ -88,7 +88,7 @@ class DummyGameManager:
     def get_drop_counts(self):
         return self._drop_counts
 
-    def verify_web_session(self, steam_id):
+    def verify_web_session(self, steam_id, *, quiet=False):
         return True
 
 

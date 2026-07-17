@@ -110,14 +110,21 @@ class CardDropChecker:
             logger.debug("Session verification request failed: %s", err)
             return False
 
-    def _ensure_session_verified(self, steam_id: str) -> None:
-        """Verify the session once; downgrade and warn if not truly authenticated."""
+    def _ensure_session_verified(self, steam_id: str, *, quiet: bool = False) -> None:
+        """Verify the session once; downgrade and warn if not truly authenticated.
+
+        With ``quiet=True`` a failed probe logs at INFO (caller is about to
+        attempt recovery and will warn itself if that also fails).
+        """
         if not self._authenticated_session or self._auth_verified is not None:
             return
 
         self._auth_verified = self._verify_session(steam_id)
         if not self._auth_verified:
             self._authenticated_session = False
+            if quiet:
+                logger.info("Steam web session is not authenticated against steamcommunity.com; attempting recovery from browser cookies...")
+                return
             logger.warning(
                 "Steam web session is NOT authenticated against steamcommunity.com "
                 "(store-only/expired cookies?). Card-drop detection is unreliable: "

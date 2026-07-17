@@ -175,8 +175,8 @@ class TestLoadCommunityCookies:
             SimpleNamespace(name="steamLoginSecure", value=valid_token),
             SimpleNamespace(name="sessionid", value="xyz"),
         ]
-        mock_bc3.load = MagicMock(return_value=cookies)
-        mock_bc3.chrome = None
+        # Auto mode iterates per-browser loaders (aggregate load is skipped).
+        mock_bc3.chrome = MagicMock(return_value=cookies)
 
         import builtins
 

@@ -113,8 +113,9 @@ class SteamIdleBot:
         # object can still be a logged-out store-only token, which silently breaks
         # drop detection). This logs a clear warning when it is not.
         if steam_id and self.settings.filter_completed_card_drops and hasattr(self.game_manager, "verify_web_session"):
-            authenticated = self.game_manager.verify_web_session(steam_id)
-            if not authenticated and self.settings.auto_browser_cookies and self._recover_session_via_browser(steam_id):
+            can_recover = self.settings.auto_browser_cookies
+            authenticated = self.game_manager.verify_web_session(steam_id, quiet=can_recover)
+            if not authenticated and can_recover and self._recover_session_via_browser(steam_id):
                 self.game_manager.verify_web_session(steam_id)
 
         self._steam_id = steam_id
@@ -313,12 +314,15 @@ class SteamIdleBot:
         tracker = self._idle_tracker
 
         # Cards remaining per game, when the badge service can provide it.
+        # Subtract drops already confirmed this session so the panel tracks
+        # progress instead of repeating the initial snapshot every refresh.
         cards_remaining: dict[int, int] = {}
         for app_id in games:
             info = tracker.games.get(app_id)
             if info is not None and info.cards_before is not None:
-                cards_remaining[app_id] = info.cards_before
+                cards_remaining[app_id] = max(info.cards_before - info.cards_dropped, 0)
         total_cards = sum(cards_remaining.values())
+        total_dropped = tracker.total_cards_dropped
 
         table = Table(
             title="🎮 Steam Idle Bot — em idle agora",
@@ -331,17 +335,20 @@ class SteamIdleBot:
         table.add_column("App ID", justify="right", style="cyan")
         table.add_column("Jogo", style="white", max_width=42, overflow="ellipsis")
         table.add_column("Cartas restantes", justify="right", style="yellow")
+        table.add_column("Drops", justify="right", style="magenta")
         table.add_column("Tempo idle", justify="right", style="green")
 
         for index, app_id in enumerate(games, start=1):
             info = tracker.games.get(app_id)
             name = names.get(app_id) or (info.name if info and info.name else f"App {app_id}")
             cards = str(cards_remaining[app_id]) if app_id in cards_remaining else "?"
+            dropped = info.cards_dropped if info else 0
+            drops = f"✨ +{dropped}" if dropped > 0 else "[dim]0[/dim]"
             minutes = info.idle_minutes if info else 0.0
-            table.add_row(str(index), str(app_id), name, cards, f"{minutes:.0f} min")
+            table.add_row(str(index), str(app_id), name, cards, drops, f"{minutes:.0f} min")
 
         cards_label = str(total_cards) if cards_remaining else "desconhecido (badge API sem dados)"
-        summary = f"[bold]{len(games)}[/bold] jogos em idle  •  cartas restantes conhecidas: [bold]{cards_label}[/bold]  •  sessão: [bold]{tracker.session_minutes:.0f} min[/bold]"
+        summary = f"[bold]{len(games)}[/bold] jogos em idle  •  cartas restantes conhecidas: [bold]{cards_label}[/bold]  •  drops na sessão: [bold]{total_dropped}[/bold]  •  sessão: [bold]{tracker.session_minutes:.0f} min[/bold]"
 
         console = Console()
         console.print()
@@ -616,7 +623,7 @@ class SteamIdleBot:
             self.logger.info("Recovered authenticated steamcommunity session from local browser cookies")
             return True
         except Exception as err:  # noqa: BLE001 - recovery is best-effort
-            self.logger.debug(f"Browser cookie recovery failed: {err}")
+            self.logger.warning(f"Browser cookie recovery failed ({err}). Card-drop filtering stays conservative (drained games excluded). Provide valid community STEAM_WEB_COOKIES or set IDLING_BACKEND=python.")
             return False
 
     @staticmethod

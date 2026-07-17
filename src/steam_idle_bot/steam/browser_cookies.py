@@ -103,7 +103,10 @@ def load_community_cookies(steam_id: str | None = None, browser: str = "auto") -
         loader = loaders.get(browser.lower())
         candidates = [loader] if loader else []
     else:
-        candidates = [browser_cookie3.load, *[fn for fn in loaders.values() if fn]]
+        # Iterate specific loaders instead of browser_cookie3.load: the aggregate
+        # loader raises TypeError (profile path None) when any single browser is
+        # half-installed, aborting the whole attempt before working browsers run.
+        candidates = [fn for fn in loaders.values() if fn]
 
     for loader in candidates:
         try:

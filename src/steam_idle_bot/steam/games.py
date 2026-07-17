@@ -336,11 +336,11 @@ class GameManager:
                 logger.debug("Could not refresh drop count for %s: %s", app_id, err)
         return self.get_drop_counts()
 
-    def verify_web_session(self, steam_id: str | None) -> bool:
+    def verify_web_session(self, steam_id: str | None, *, quiet: bool = False) -> bool:
         """Probe whether the scraping session is genuinely logged in to steamcommunity."""
         if not steam_id or not hasattr(self.card_drop_checker, "_ensure_session_verified"):
             return False
-        self.card_drop_checker._ensure_session_verified(steam_id)
+        self.card_drop_checker._ensure_session_verified(steam_id, quiet=quiet)
         return bool(getattr(self.card_drop_checker, "has_authenticated_session", False))
 
     def resolve_active_steam_id(self) -> str | None:
