@@ -17,6 +17,7 @@ const NAV: { id: View; label: string; icon: string }[] = [
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard')
+  const [navOpen, setNavOpen] = useState(false)
   const bot = useBot()
 
   const statusDot =
@@ -28,9 +29,22 @@ export default function App() {
           ? 'bg-warn'
           : 'bg-dim'
 
+  function selectView(next: View) {
+    setView(next)
+    setNavOpen(false)
+  }
+
   return (
     <div className="flex h-screen bg-bg text-ink">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-edge-soft bg-surface">
+      {navOpen && (
+        <div className="fixed inset-0 z-30 bg-bg/70 backdrop-blur-sm lg:hidden" onClick={() => setNavOpen(false)} />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-56 shrink-0 flex-col border-r border-edge-soft bg-surface transition-transform duration-200 lg:static lg:translate-x-0 ${
+          navOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
         <div className="flex items-center gap-2.5 px-5 py-5">
           <span className="text-2xl">🎴</span>
           <div>
@@ -42,7 +56,7 @@ export default function App() {
           {NAV.map((item) => (
             <button
               key={item.id}
-              onClick={() => setView(item.id)}
+              onClick={() => selectView(item.id)}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
                 view === item.id ? 'bg-raised font-semibold text-em-soft' : 'text-mut hover:bg-raised/60 hover:text-ink'
               }`}
@@ -61,12 +75,31 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-y-auto p-8">
-        {view === 'dashboard' && <Dashboard snapshot={bot.snapshot} connected={bot.connected} />}
-        {view === 'settings' && <SettingsView />}
-        {view === 'logs' && <LogsView logs={bot.logs} onClear={bot.clearLogs} />}
-        {view === 'report' && <ReportView report={bot.report} />}
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-3 border-b border-edge-soft bg-surface px-4 py-3 lg:hidden">
+          <button
+            onClick={() => setNavOpen(true)}
+            className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mut"
+            aria-label="Abrir menu"
+          >
+            ☰
+          </button>
+          <p className="text-sm font-semibold">{NAV.find((item) => item.id === view)?.label}</p>
+        </header>
+
+        {!bot.connected && (
+          <div className="border-b border-warn/30 bg-warn/10 px-4 py-2 text-center text-xs font-medium text-warn">
+            Conexão com o servidor perdida — tentando reconectar…
+          </div>
+        )}
+
+        <main className="min-w-0 flex-1 overflow-y-auto p-5 lg:p-8">
+          {view === 'dashboard' && <Dashboard snapshot={bot.snapshot} connected={bot.connected} />}
+          {view === 'settings' && <SettingsView />}
+          {view === 'logs' && <LogsView logs={bot.logs} onClear={bot.clearLogs} />}
+          {view === 'report' && <ReportView report={bot.report} />}
+        </main>
+      </div>
 
       {bot.authRequest && <AuthDialog request={bot.authRequest} onDone={bot.dismissAuth} />}
     </div>

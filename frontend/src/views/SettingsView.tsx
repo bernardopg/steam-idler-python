@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { SettingsDTO } from '../types'
 
@@ -102,6 +102,7 @@ export function SettingsView() {
   const [loaded, setLoaded] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const baselineRef = useRef<string>('')
 
   useEffect(() => {
     api
@@ -113,12 +114,19 @@ export function SettingsView() {
           next[spec.key] = spec.type === 'bool' ? Boolean(raw ?? false) : spec.key === 'password' ? '' : toFormValue(raw)
         }
         setForm(next)
+        baselineRef.current = JSON.stringify(next)
         setLoaded(true)
       })
       .catch((exc) => setMessage({ tone: 'err', text: String(exc) }))
   }, [])
 
+  const dirty = loaded && JSON.stringify(form) !== baselineRef.current
+
   async function save() {
+    if (String(form.username ?? '').trim() === '') {
+      setMessage({ tone: 'err', text: 'Usuário Steam é obrigatório.' })
+      return
+    }
     setSaving(true)
     setMessage(null)
     const payload: SettingsDTO = {}
@@ -140,6 +148,7 @@ export function SettingsView() {
     payload.drop_cache_path = String(form.drop_cache_path || '.cache/no_drop_cards.json')
     try {
       const result = await api.putSettings(payload)
+      baselineRef.current = JSON.stringify(form)
       setMessage({ tone: 'ok', text: `Salvo em ${result.path}` })
     } catch (exc) {
       setMessage({ tone: 'err', text: String(exc) })
@@ -175,6 +184,7 @@ export function SettingsView() {
         >
           {saving ? 'Salvando…' : 'Salvar no .env'}
         </button>
+        {dirty && !saving && <span className="text-xs font-medium text-warn">● Alterações não salvas</span>}
         {message && <p className={`text-sm ${message.tone === 'ok' ? 'text-em-bright' : 'text-err'}`}>{message.text}</p>}
       </div>
     </div>

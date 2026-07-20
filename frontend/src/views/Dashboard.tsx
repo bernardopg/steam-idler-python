@@ -55,7 +55,9 @@ export function Dashboard({ snapshot, connected }: DashboardProps) {
         </button>
         <button
           disabled={busy || !running}
-          onClick={() => act(() => api.stopBot())}
+          onClick={() => {
+            if (window.confirm('Parar o bot agora? O idle em andamento será interrompido.')) act(() => api.stopBot())
+          }}
           className="rounded-lg border border-edge px-6 py-2.5 font-semibold text-mut transition hover:border-err hover:text-err disabled:cursor-not-allowed disabled:opacity-40"
         >
           ■ Parar
@@ -83,8 +85,8 @@ export function Dashboard({ snapshot, connected }: DashboardProps) {
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-edge-soft">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-edge-soft">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-edge-soft bg-surface text-left text-xs uppercase tracking-widest text-dim">
               <th className="px-4 py-3 font-medium">App ID</th>
