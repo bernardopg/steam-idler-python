@@ -1,0 +1,176 @@
+# Tag-triggered release: re-verifies the tagged commit, builds distributable
+# artifacts, and publishes a GitHub Release with notes pulled straight from
+# CHANGELOG.md. The maintainer prepares the release by hand (bump
+# pyproject.toml, move [Unreleased] to a dated version section — see
+# RELEASING.md) and pushes a `vX.Y.Z` tag; this workflow never mutates the
+# repo, it only validates and ships what was already committed.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re-)release, e.g. v1.0.0"
+        required: true
+
+# Least privilege by default; only the publish job elevates to contents:write.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---- Re-verify the tagged commit before shipping anything from it ----
+  verify:
+    name: Verify version & test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Verify tag matches pyproject.toml version
+        id: version
+        run: |
+          set -euo pipefail
+          ref="${{ inputs.tag || github.ref_name }}"
+          tag_version="${ref#v}"
+          pyproject_version=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
+          if [ "$tag_version" != "$pyproject_version" ]; then
+            echo "::error::Tag $ref (version $tag_version) does not match pyproject.toml version $pyproject_version"
+            exit 1
+          fi
+          echo "version=$pyproject_version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Lint (ruff)
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type-check (mypy)
+        run: uv run mypy src
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run tests
+        env:
+          USERNAME: test_user
+          PASSWORD: test_pass
+          DISPLAY: ":99"
+        run: |
+          Xvfb :99 -screen 0 1024x768x24 &
+          sleep 1
+          uv run pytest -q --cov=src/steam_idle_bot --cov-fail-under=85
+
+  # ---- Build the artifacts attached to the release ----
+  build:
+    name: Build distribution artifacts
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+
+      - name: Build Python package (sdist + wheel)
+        run: uv build
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package frontend build
+        run: |
+          set -euo pipefail
+          version="${{ needs.verify.outputs.version }}"
+          (cd frontend/dist && zip -rq "../../dist/steam-idle-bot-web-${version}.zip" .)
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist
+          path: dist/
+          retention-days: 7
+
+  # ---- Publish the GitHub Release with changelog-derived notes ----
+  publish:
+    name: Publish GitHub Release
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Extract changelog section
+        run: |
+          set -euo pipefail
+          version="${{ needs.verify.outputs.version }}"
+          awk -v ver="$version" '
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "^## \\[" ver "\\]") { found = 1; next }
+              next
+            }
+            found { print }
+          ' CHANGELOG.md > /tmp/release_notes.md
+          if [ ! -s /tmp/release_notes.md ]; then
+            echo "::error::No CHANGELOG.md section found for [$version]. Move [Unreleased] to [$version] - <date> before tagging (see RELEASING.md)."
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: "v${{ needs.verify.outputs.version }}"
+          body_path: /tmp/release_notes.md
+          prerelease: ${{ contains(needs.verify.outputs.version, '-') }}
+          files: dist/*
