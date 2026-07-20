@@ -30,6 +30,16 @@ the issue, delete and re-push the tag (`git tag -d vX.Y.Z && git push origin :vX
 then repeat from step 5), or re-run it manually via `workflow_dispatch` with the existing
 tag once the fix is on `main`.
 
+## PyPI
+
+The `publish-pypi` job pushes the built wheel/sdist to PyPI via
+[Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC — no stored token).
+It runs independently of the GitHub Release job, so a not-yet-configured trusted publisher
+never blocks the release itself; the job just fails and can be re-run later (Actions →
+the release run → *Re-run failed jobs*) once PyPI is set up. One-time setup on pypi.org:
+add a trusted publisher with owner `bernardopg`, repository `steam-idler-python`, workflow
+`release.yml`, environment `pypi`.
+
 ## Pre-release versions
 
 Tags like `v1.1.0-rc1` are marked as GitHub pre-releases automatically (any version

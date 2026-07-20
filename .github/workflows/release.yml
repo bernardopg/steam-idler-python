@@ -118,13 +118,18 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.verify.outputs.version }}"
-          (cd frontend/dist && zip -rq "../../dist/steam-idle-bot-web-${version}.zip" .)
+          mkdir -p web-dist
+          (cd frontend/dist && zip -rq "../../web-dist/steam-idle-bot-web-${version}.zip" .)
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-dist
-          path: dist/
+          # Kept in separate dirs so the PyPI publish job can point twine at
+          # dist/ alone — it chokes on non-package files like the zip.
+          path: |
+            dist/
+            web-dist/
           retention-days: 7
 
   # ---- Publish the GitHub Release with changelog-derived notes ----
@@ -145,7 +150,6 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-dist
-          path: dist
 
       - name: Extract changelog section
         run: |
@@ -173,4 +177,30 @@ jobs:
           name: "v${{ needs.verify.outputs.version }}"
           body_path: /tmp/release_notes.md
           prerelease: ${{ contains(needs.verify.outputs.version, '-') }}
-          files: dist/*
+          files: |
+            dist/*
+            web-dist/*
+
+  # ---- Publish the wheel/sdist to PyPI via Trusted Publishing (OIDC, no ----
+  # ---- stored secrets). Independent of the GitHub Release job so a not- ----
+  # ---- yet-configured PyPI trusted publisher never blocks the release. ----
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/steam-idle-bot/${{ needs.verify.outputs.version }}/
+    permissions:
+      id-token: write # required for OIDC trusted publishing
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
+        with:
+          packages-dir: dist/
