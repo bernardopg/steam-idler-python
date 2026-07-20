@@ -97,12 +97,12 @@ class TestController:
         snapshot = controller.snapshot()
         assert snapshot["account"] == "user"
         assert snapshot["session_minutes"] == 45.6
-        assert snapshot["cards_remaining_known"] == 3
+        assert snapshot["cards_remaining_known"] == 2
         assert snapshot["session_drops"] == 1
         assert snapshot["games"][0] == {
             "app_id": 570,
             "name": "Dota 2",
-            "cards_remaining": 3,
+            "cards_remaining": 2,
             "drops": 1,
             "idle_minutes": 12.3,
         }

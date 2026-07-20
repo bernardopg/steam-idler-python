@@ -213,13 +213,14 @@ class BotController:
                     for app_id, info in tracker.games.items():
                         drops = info.cards_dropped
                         total_drops += drops
-                        if info.cards_before is not None:
-                            known.append(info.cards_before)
+                        remaining = max(info.cards_before - drops, 0) if info.cards_before is not None else None
+                        if remaining is not None:
+                            known.append(remaining)
                         games.append(
                             {
                                 "app_id": app_id,
                                 "name": info.name or f"App {app_id}",
-                                "cards_remaining": info.cards_before,
+                                "cards_remaining": remaining,
                                 "drops": drops,
                                 "idle_minutes": round(info.idle_minutes, 1),
                             }
