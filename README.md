@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12%2B-66c0f4.svg" alt="Python 3.12+"></a>
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/managed%20by-uv-a3cf06.svg" alt="uv-managed"></a>
-  <img src="https://img.shields.io/badge/tests-560%20passing-2ea043.svg" alt="560 tests passing">
+  <img src="https://img.shields.io/badge/tests-406%20passing-2ea043.svg" alt="406 tests passing">
   <img src="https://img.shields.io/badge/typed-mypy%20clean-66c0f4.svg" alt="mypy clean">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c7d5e0.svg" alt="MIT license"></a>
   <a href="docs/en/README.md"><img src="https://img.shields.io/badge/docs-EN-blue" alt="English docs"></a>

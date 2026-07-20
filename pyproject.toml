@@ -1,13 +1,13 @@
 [project]
 name = "steam-idle-bot"
-version = "0.1.0"
+version = "1.0.0"
 description = "Steam Idle Bot with Trading Card Support"
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Bernardo Pinto Gomes" }]
 keywords = ["steam", "trading-cards", "idle", "automation"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.12",

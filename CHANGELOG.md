@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-20
+
 ### Removed
 
 - **Tkinter desktop GUI** (`gui.py`, `run-gui.sh`): the web UI (FastAPI + React) is now the single
