@@ -10,13 +10,32 @@ interface AuthDialogProps {
 export function AuthDialog({ request, onDone }: AuthDialogProps) {
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   async function submit() {
+    if (!code.trim()) return
+    setBusy(true)
     try {
       await api.sendAuthCode(code)
       onDone()
     } catch (exc) {
       setError(String(exc))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function cancel() {
+    // An empty code tells the backend login flow to abort cleanly (treated as
+    // "Authentication code entry cancelled"), which stops the bot instead of
+    // leaving the worker thread blocked forever on this prompt.
+    setBusy(true)
+    try {
+      await api.sendAuthCode('')
+    } catch {
+      /* the bot may already have stopped; either way there's nothing to retry */
+    } finally {
+      onDone()
     }
   }
 
@@ -40,12 +59,23 @@ export function AuthDialog({ request, onDone }: AuthDialogProps) {
           className="tnum mt-4 w-full rounded-lg border border-edge bg-surface px-4 py-3 text-center font-mono text-xl tracking-[0.4em] text-em-bright outline-none focus:border-em"
         />
         {error && <p className="mt-2 text-sm text-err">{error}</p>}
-        <button
-          onClick={submit}
-          className="mt-4 w-full rounded-lg bg-em px-4 py-2.5 font-semibold text-bg transition hover:bg-em-bright"
-        >
-          Confirmar
-        </button>
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={cancel}
+            disabled={busy}
+            className="flex-1 rounded-lg border border-edge px-4 py-2.5 font-semibold text-mut transition hover:border-err hover:text-err disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy || !code.trim()}
+            className="flex-1 rounded-lg bg-em px-4 py-2.5 font-semibold text-bg transition hover:bg-em-bright disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Confirmar
+          </button>
+        </div>
+        <p className="mt-3 text-center text-xs text-dim">Cancelar interrompe o bot, já que o login ficará pendente.</p>
       </div>
     </div>
   )

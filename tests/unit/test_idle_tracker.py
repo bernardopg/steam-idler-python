@@ -192,3 +192,47 @@ def test_to_dict_structured_snapshot(monkeypatch):
         "drop_status_known": True,
         "idle_minutes": 5.0,
     }
+
+
+def test_game_idle_info_reports_all_drop_sources_and_frozen_accumulated_time() -> None:
+    assert GameIdleInfo(app_id=1, cards_before=5, cards_after=3, inventory_drops=1).drop_source == "count+inventory"
+    assert GameIdleInfo(app_id=2, cards_before=3, cards_after=3, inventory_drops=1).drop_source == "inventory"
+    assert GameIdleInfo(app_id=3, cards_before=3, cards_after=3).drop_source == "known-zero"
+
+    frozen = GameIdleInfo(app_id=4, start_time=10.0, end_time=20.0, accumulated_seconds=7.0)
+    assert frozen.idle_seconds == 7.0
+
+
+def test_update_games_applies_pending_state_and_restarts_completed_game(monkeypatch) -> None:
+    times = iter([100.0, 150.0, 200.0, 250.0])
+    monkeypatch.setattr("steam_idle_bot.utils.idle_tracker.time.time", lambda: next(times))
+    tracker = IdleTracker()
+    tracker.set_cards_before(20, 3)
+    tracker.set_cards_after(20, 1)
+    tracker.set_inventory_drops(20, 2)
+    tracker.start_session([10])
+
+    # Add a new game with pending facts and supplied name metadata.
+    tracker.update_games([10, 20, 30], {20: "New game"})
+    added = tracker.games[20]
+    assert (added.name, added.cards_before, added.cards_after, added.inventory_drops) == ("New game", 3, 1, 2)
+    assert tracker.games[30].cards_before is None
+
+    # Remove then re-add it: the tracker resumes its timer rather than creating
+    # a duplicate GameIdleInfo.
+    tracker.update_games([10])
+    assert tracker.games[20].end_time == 200.0
+    tracker.update_games([10, 20])
+    assert tracker.games[20].start_time == 250.0
+    assert tracker.games[20].end_time is None
+
+
+def test_stop_game_ignores_unknown_or_finished_games() -> None:
+    tracker = IdleTracker()
+    tracker.stop_game(999)
+    assert tracker.session_seconds == 0.0
+    assert tracker.has_pending_card_before(999) is False
+    tracker.start_session([10])
+    tracker.stop_game(10, now=10.0)
+    tracker.stop_game(10, now=20.0)
+    assert tracker.games[10].end_time == 10.0

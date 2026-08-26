@@ -467,3 +467,85 @@ class TestStartIdlingDedup:
         client = SteamUtilityIdleClient(make_settings(), bridge=bridge)
         client.start_idling([570, 570, 730])
         assert bridge.spawned == [570, 730]
+
+
+# ---------------------------------------------------------------------------
+# Coverage push: bridge discovery/spawn and client process reconciliation edges
+# ---------------------------------------------------------------------------
+
+
+def test_project_root_resolves_once_and_is_cached() -> None:
+    bridge = SteamUtilityBridge(configured_path=None)
+    resolved = Path("/tmp/steam-utility")
+    with patch.object(bridge, "_resolve_project_root", return_value=resolved) as discover:
+        assert bridge.project_root == resolved
+        assert bridge.project_root == resolved
+    discover.assert_called_once()
+
+
+def test_get_state_report_returns_valid_dict() -> None:
+    bridge = SteamUtilityBridge(configured_path=None)
+    with patch.object(bridge, "run_json_command", return_value={"activeSteamId": 123}):
+        assert bridge.get_state_report() == {"activeSteamId": 123}
+
+
+def test_spawn_idle_process_invokes_dotnet_with_app_id() -> None:
+    bridge = SteamUtilityBridge(configured_path=None)
+    bridge._project_root = Path("/tmp/steam-utility")
+    process = MagicMock(spec=subprocess.Popen)
+    with patch("subprocess.Popen", return_value=process) as spawn:
+        assert bridge.spawn_idle_process(570) is process
+
+    args, kwargs = spawn.call_args
+    assert args[0][-2:] == ["idle", "570"]
+    assert kwargs["cwd"] == Path("/tmp/steam-utility")
+
+
+def test_resolve_project_root_finds_valid_candidate_and_errors_when_absent(tmp_path) -> None:
+    incomplete = tmp_path / "incomplete"
+    incomplete.mkdir()
+    root = tmp_path / "steam-utility"
+    csproj = root / "src" / "SteamUtility.Cli" / "SteamUtility.Cli.csproj"
+    csproj.parent.mkdir(parents=True)
+    csproj.write_text("<Project />", encoding="utf-8")
+
+    bridge = SteamUtilityBridge(configured_path=None)
+    with patch.object(bridge, "_candidate_paths", return_value=[tmp_path / "missing", incomplete, root]):
+        assert bridge._resolve_project_root() == root
+
+    with patch.object(bridge, "_candidate_paths", return_value=[]), pytest.raises(SteamUtilityError, match="Could not find"):
+        bridge._resolve_project_root()
+
+
+def test_start_idling_removes_stale_adoption_and_replaces_dead_process(monkeypatch) -> None:
+    monkeypatch.setattr("steam_idle_bot.steam.steam_utility.time.sleep", lambda seconds: None)
+    bridge = FakeBridge()
+    client = SteamUtilityIdleClient(make_settings(), bridge=bridge)
+    client._reconciled = True
+    client._adopted_pids = {999: 42}
+    dead_process = FakeProcess(running=False)
+    client._processes = {570: dead_process}
+
+    assert client.start_idling([570]) is True
+
+    assert 999 not in client._adopted_pids
+    assert client._processes[570] is bridge.processes[570]
+    assert bridge.spawned == [570]
+
+
+def test_reconcile_ignores_owned_unrelated_processes(monkeypatch) -> None:
+    bridge = FakeBridge()
+    bridge.idle_pids = {730: [111]}
+    client = SteamUtilityIdleClient(make_settings(), bridge=bridge)
+    client._processes = {570: FakeProcess(pid=111)}
+    monkeypatch.setattr(client, "_stop_pid", MagicMock())
+
+    report = client.reconcile_existing_idles([570])
+
+    assert report["untouched"] == []
+
+
+def test_pid_alive_checks_proc_like_path(tmp_path) -> None:
+    assert SteamUtilityIdleClient._pid_alive(123, str(tmp_path)) is False
+    (tmp_path / "123").mkdir()
+    assert SteamUtilityIdleClient._pid_alive(123, str(tmp_path)) is True

@@ -89,7 +89,7 @@ class GameManager:
     def _get_owned_games_via_api(self, steam_id: str) -> list[int]:
         """Get owned games using Steam Web API."""
         try:
-            url = "http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
+            url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
             params = {
                 "key": self.settings.steam_api_key,
                 "steamid": steam_id,

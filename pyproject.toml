@@ -1,6 +1,6 @@
 [project]
 name = "steam-idle-bot"
-version = "1.0.0"
+version = "1.0.1"
 description = "Steam Idle Bot with Trading Card Support"
 readme = "README.md"
 license = "MIT"

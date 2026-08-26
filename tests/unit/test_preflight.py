@@ -70,3 +70,8 @@ def test_preflight_silent_when_detection_unknown(tmp_path):
     # No /proc available (e.g. non-Linux): stay quiet rather than warn falsely.
     missing = str(tmp_path / "missing")
     assert preflight_warnings("steam_utility", env={}, proc_root=missing) == []
+
+
+def test_is_steam_running_ignores_unreadable_proc_entry(tmp_path):
+    (tmp_path / "10").mkdir()
+    assert is_steam_running(str(tmp_path)) is None

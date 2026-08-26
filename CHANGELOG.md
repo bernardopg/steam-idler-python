@@ -6,6 +6,39 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-26
+
+### Added
+
+- **Test suite expanded** (406 → 546 tests; total coverage 87.9% → 99.0%, with the CI
+  regression floor kept at 85%). Highlights are real end-to-end tests, not mocks of
+  business logic: `BotController` runs a genuine `SteamIdleBot` dry-run on a real worker
+  thread (startup, log forwarding, report emission, teardown, error path), the REST API
+  starts a real dry run and observes it finish, `/api/stop-app-ids` scans the real `/proc`,
+  and the WebSocket loop streams live events plus periodic snapshots over a real socket.
+  `SteamClientWrapper`, `SteamTradingCardInventory`, `GameManager`, and the steam-utility
+  bridge have comprehensive lifecycle, cache, fallback, parsing, and error-path coverage.
+
+### Fixed
+
+- **Security**: `GameManager._get_owned_games_via_api()` called the Steam Web API
+  (`GetOwnedGames`) over plain HTTP, sending `STEAM_API_KEY` unencrypted in the query
+  string. Switched to HTTPS, matching every other Steam API/community call in the
+  codebase.
+- Web UI: `webapi/server.py` docstring and the "frontend not built" API hint referenced
+  `pnpm`; the project uses `npm` everywhere else (`run-web.sh`, `frontend/package-lock.json`,
+  docs). Corrected both to `npm`.
+
+### Changed
+
+- Dependency refresh across the stack: `uv.lock` (fastapi, starlette, uvicorn, mypy, ruff,
+  gevent, and other transitive pins), `astral-sh/setup-uv` GitHub Action v9.0.0 → v10.0.1,
+  and frontend packages (`vite`, `react`/`react-dom`, `@vitejs/plugin-react`, `tailwindcss`)
+  to their latest compatible minor/patch versions. Resolves a high-severity `npm audit`
+  finding in a transitive `nanoid` dependency of `vite`/`postcss`. `typescript` intentionally
+  stayed on the 6.x line — TypeScript 7 is a major rewrite (native Go compiler) with
+  breaking `tsconfig` defaults and no stable API yet for the wider tooling ecosystem.
+
 ## [1.0.0] - 2026-07-20
 
 ### Removed

@@ -41,3 +41,31 @@ def test_load_from_file_when_spec_is_none(tmp_path, monkeypatch):
 
 def test_parse_int_list_with_only_commas():
     assert _parse_int_list(",,,") == []
+
+
+def test_parse_cookie_map_tolerates_invalid_and_partial_export_records() -> None:
+    from steam_idle_bot.config.settings import _parse_cookie_map
+
+    assert _parse_cookie_map("{invalid") == "{invalid"
+    assert _parse_cookie_map("[invalid") == "[invalid"
+    # Browser exports can include unrelated/incomplete records; only complete
+    # cookie entries are retained.
+    assert _parse_cookie_map('[null,{"value":"missing-name"},{"name":"missing-value"},{"name":"ok","value":7}]') == [{"name": "ok", "value": "7", "domain": "steamcommunity.com", "path": "/", "secure": False}]
+    assert _parse_cookie_map("sessionid=abc; ; steamLoginSecure=token") == {
+        "sessionid": "abc",
+        "steamLoginSecure": "token",
+    }
+    assert _parse_cookie_map("missing-separator") == "missing-separator"
+    assert _parse_cookie_map("=missing-key") == "=missing-key"
+
+
+def test_save_to_env_serializes_browser_cookie_export(tmp_path) -> None:
+    settings = Settings(
+        username="user",
+        password="pass",
+        steam_web_cookies=[{"name": "sessionid", "value": "abc"}],
+    )
+
+    target = settings.save_to_env_file(tmp_path / ".env")
+
+    assert 'STEAM_WEB_COOKIES=[{"name":"sessionid","value":"abc"}]' in target.read_text(encoding="utf-8")

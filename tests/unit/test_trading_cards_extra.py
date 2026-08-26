@@ -133,3 +133,45 @@ def test_filter_backs_off_on_rate_limit(monkeypatch):
     assert out == [1, 3]
     # Back-off widened the delay beyond the configured base after the 429.
     assert max(slept) > 0.5
+
+
+def test_filter_relaxes_backoff_after_ten_clean_checks(monkeypatch):
+    detector = TradingCardDetector(rate_limit_delay=0.5, cache_enabled=False)
+    outcomes = [RateLimitError("429")] + [True] * 10
+    detector.has_trading_cards = lambda app_id: (_ for _ in ()).throw(outcomes.pop(0)) if isinstance(outcomes[0], BaseException) else outcomes.pop(0)
+    sleeps: list[float] = []
+    monkeypatch.setattr("time.sleep", sleeps.append)
+
+    assert detector.filter_games_with_trading_cards(list(range(11)), max_games=20) == list(range(1, 11))
+    assert 1.0 in sleeps  # rate-limit backoff doubled the initial 0.5s delay
+
+
+def test_filter_silently_skips_failures_when_requested(monkeypatch):
+    detector = TradingCardDetector(rate_limit_delay=0, cache_enabled=False)
+    outcomes = [TradingCardDetectionError("bad"), RuntimeError("unexpected")]
+
+    def fails(app_id):
+        raise outcomes.pop(0)
+
+    detector.has_trading_cards = fails
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    assert detector.filter_games_with_trading_cards([1, 2], skip_failures=True) == []
+
+
+def test_filter_rate_limit_honors_max_checks(monkeypatch):
+    detector = TradingCardDetector(rate_limit_delay=0, cache_enabled=False)
+    detector.has_trading_cards = lambda app_id: (_ for _ in ()).throw(RateLimitError("429"))
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    assert detector.filter_games_with_trading_cards([1, 2], max_checks=1) == []
+
+
+def test_build_session_configures_real_get_only_retries() -> None:
+    from requests.adapters import HTTPAdapter
+
+    session = TradingCardDetector.build_session()
+
+    adapter = session.get_adapter("https://store.steampowered.com")
+    assert isinstance(adapter, HTTPAdapter)
+    assert adapter.max_retries.total == 5
+    assert adapter.max_retries.allowed_methods == frozenset({"GET"})
+    assert adapter.max_retries.backoff_max == 30.0

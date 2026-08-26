@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -143,3 +144,23 @@ def test_filter_logs_skipped_games(caplog):
         session=DummySession(response=DummyResponse(data={"response": {"badges": [{"appid": 1, "border_color": 0, "cards_remaining": 0}]}})),
     )
     assert service2.filter_games_with_remaining_cards([1], "123") == []
+
+
+def test_badge_service_skips_none_remaining_and_rejects_non_list_response() -> None:
+    service = BadgeService(make_settings(), session=DummySession())
+    service._badges_cache["123"] = (time.time(), [{"appid": 10, "border_color": 0, "cards_remaining": None}])
+    assert service._fetch_cards_remaining("123") == {}
+
+    service._badges_cache.clear()
+    service._http = DummySession(DummyResponse({"response": {"badges": {}}}))
+    with pytest.raises(BadgeServiceError, match="Invalid badge list"):
+        service._fetch_badges("123")
+
+
+def test_badge_cache_can_be_cleared_and_public_snapshot_bypasses_it() -> None:
+    service = BadgeService(make_settings(), session=DummySession(DummyResponse({"response": {"badges": []}})))
+    service._badges_cache["123"] = (time.time(), [{"appid": 10, "cards_remaining": 3}])
+
+    assert service.get_cards_remaining("123") == {}
+    service.clear_cache()
+    assert service._badges_cache == {}

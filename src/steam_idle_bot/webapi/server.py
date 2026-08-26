@@ -11,7 +11,7 @@ Endpoints:
 - GET  /api/report         → last session report text
 - WS   /api/ws             → init payload, then log/status/report/auth events + snapshots
 
-The built frontend (frontend/dist) is served at /; run `pnpm build` in
+The built frontend (frontend/dist) is served at /; run `npm run build` in
 frontend/ (or ./run-web.sh, which does it on demand).
 """
 
@@ -201,7 +201,7 @@ def create_app(controller: BotController | None = None) -> FastAPI:
             return JSONResponse(
                 {
                     "error": "Frontend not built",
-                    "hint": "Run `pnpm install && pnpm build` inside frontend/ or use ./run-web.sh",
+                    "hint": "Run `npm install && npm run build` inside frontend/ or use ./run-web.sh",
                 }
             )
 

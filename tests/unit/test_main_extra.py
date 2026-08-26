@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import runpy
 import signal
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from steam_idle_bot.config.settings import Settings
 from steam_idle_bot.main import (
@@ -18,6 +22,8 @@ from steam_idle_bot.main import (
     create_parser,
 )
 from steam_idle_bot.steam.inventory import InventoryCardDrop
+
+main_module = importlib.import_module("steam_idle_bot.main")
 
 
 class DummyClient:
@@ -1026,3 +1032,377 @@ class TestRunNormalModeStartFailure:
         bot = make_bot(client=client, games=[570])
         with patch.object(bot, "_switch_to_steam_utility", return_value=False):
             bot._run_normal_mode()
+
+
+# ---------------------------------------------------------------------------
+# Coverage push: normal-mode recovery, loop refresh/reconnect and edge paths
+# ---------------------------------------------------------------------------
+
+
+def test_normal_mode_logs_preflight_warning_and_retries_after_browser_recovery(monkeypatch) -> None:
+    """A recoverable logged-out web session is rebuilt and verified before
+    selection; preflight warnings remain visible to terminal users."""
+    client = DummyClient()
+    games = [570]
+    bot = make_bot(client=client, games=games)
+    bot.game_manager.verify_web_session = MagicMock(side_effect=[False, True])
+    bot._recover_session_via_browser = MagicMock(return_value=True)
+    bot._main_loop = MagicMock()
+
+    monkeypatch.setattr(main_module, "preflight_warnings", lambda backend: ["Steam warning"])
+
+    bot._run_normal_mode()
+
+    assert bot.game_manager.verify_web_session.call_args_list == [
+        (("123",), {"quiet": True}),
+        (("123",), {}),
+    ]
+    bot._recover_session_via_browser.assert_called_once_with("123")
+    bot._main_loop.assert_called_once_with(games, steam_id="123")
+
+
+def test_main_loop_refreshes_writes_checkpoint_and_honors_duration(monkeypatch) -> None:
+    """The live loop updates games, emits checkpoints, resolves a missing ID,
+    and exits exactly at its configured duration without real waits."""
+    client = DummyClient()
+    client.steam_id = None
+    bot = make_bot(client=client, games=[570, 730])
+    # The first refreshed app is already tracked, while the second is new:
+    # this checks both sides of the append guard in the refresh path.
+    bot._games_to_idle = [570]
+    bot._idle_tracker.start_session([730], {})
+    # Direct assignment is intentional: these sub-minute values make the
+    # orchestration clock test fast while production validation stays unchanged.
+    bot.settings.refresh_interval_seconds = 1
+    bot.settings.checkpoint_minutes = 0.02  # 1.2 seconds
+    bot.settings.duration_minutes = 0.05  # 3 seconds
+
+    clock = [0.0]
+    monkeypatch.setattr(main_module.time, "time", lambda: clock[0])
+    client.sleep = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    checkpoint = MagicMock()
+    bot._write_checkpoint = checkpoint
+
+    bot._main_loop([730], steam_id=None)
+
+    assert checkpoint.call_count == 1
+    assert bot._games_to_idle == [570, 730]
+    assert bot._stop_event.is_set()
+
+
+def test_main_loop_reconnect_resume_failure_switches_backend() -> None:
+    """A successful reconnect that cannot resume idling attempts the utility
+    fallback instead of silently leaving games stopped."""
+    client = DummyClient()
+    client.connected = False
+    client.start_ok = False
+    bot = make_bot(client=client, games=[570])
+    switched = MagicMock(return_value=True)
+    bot._switch_to_steam_utility = switched
+    bot._resolve_active_steam_id = MagicMock(return_value="456")
+
+    ticks = [0]
+
+    def stop_after_reconnect(seconds):
+        ticks[0] += 1
+        if ticks[0] == 2:
+            bot._stop_event.set()
+
+    client.sleep = stop_after_reconnect
+    bot._main_loop([570], steam_id="123")
+
+    switched.assert_called_once_with("failed to resume idling after reconnect", games=[570])
+    bot._resolve_active_steam_id.assert_called_once()
+
+
+def test_main_loop_failed_reconnect_switches_backend() -> None:
+    """A failed reconnect can move directly to steam-utility."""
+    client = DummyClient()
+    client.connected = False
+    client.reconnect = lambda: False
+    bot = make_bot(client=client, games=[570])
+    switched = MagicMock(return_value=True)
+    bot._switch_to_steam_utility = switched
+    bot._resolve_active_steam_id = MagicMock(return_value="456")
+
+    ticks = [0]
+
+    def stop_after_reconnect(seconds):
+        ticks[0] += 1
+        if ticks[0] == 2:
+            bot._stop_event.set()
+
+    client.sleep = stop_after_reconnect
+    bot._main_loop([570], steam_id="123")
+
+    switched.assert_called_once_with("reconnect failure on python backend", games=[570])
+    bot._resolve_active_steam_id.assert_called_once()
+
+
+def test_status_panel_calculates_remaining_cards_with_console() -> None:
+    """The terminal panel shows remaining count after inventory-confirmed drops."""
+    bot = make_bot(games=[570])
+    bot._console_output = True
+    bot._idle_tracker.start_session([570], {570: "Game"})
+    bot._idle_tracker.set_cards_before(570, 3)
+    bot._idle_tracker.set_inventory_drops(570, 1)
+
+    with patch("rich.console.Console.print"):
+        bot._print_status_panel([570])
+
+
+def test_initial_card_capture_skips_inactive_scraper_counts() -> None:
+    """Scraper counts are limited to the active idling set and never overwrite
+    an already captured before-count."""
+    gm = DummyGameManager(games=[570])
+    gm._drop_counts = {570: 2, 730: 5}
+    bot = make_bot(games=[570])
+    bot.game_manager = gm
+    bot._games_to_idle = [570]
+    bot._idle_tracker.start_session([570], {})
+    bot._idle_tracker.set_cards_before(570, 3)
+
+    bot._capture_initial_cards()
+
+    assert bot._idle_tracker.games[570].cards_before == 3
+    assert 730 not in bot._idle_tracker.games
+
+
+def test_initial_inventory_snapshot_failure_is_nonfatal() -> None:
+    bot = make_bot()
+    bot._steam_id = "123"
+    reader = MagicMock()
+    reader.snapshot.side_effect = RuntimeError("inventory unavailable")
+    bot._inventory_reader = reader
+
+    bot._capture_initial_inventory()
+
+    assert bot._inventory_before == {}
+
+
+def test_final_card_capture_uses_scraper_when_badge_api_has_no_counts() -> None:
+    """The authoritative authenticated scraper augments a Badge API response
+    that legitimately contains no in-progress card counts."""
+    gm = DummyGameManager(games=[570])
+    gm.badge_service = MagicMock()
+    gm.badge_service.get_cards_remaining.return_value = None
+    gm.fetch_drop_counts = MagicMock(return_value={570: 1, 730: 9})
+    bot = make_bot(games=[570])
+    bot.game_manager = gm
+    bot._steam_id = "123"
+    bot._games_to_idle = [570]
+    bot._idle_tracker.start_session([570], {})
+
+    bot._capture_final_cards()
+
+    assert bot._idle_tracker.games[570].cards_after == 1
+    assert 730 not in bot._idle_tracker.games
+
+
+def test_inventory_progress_handles_zero_results_and_snapshot_errors() -> None:
+    bot = make_bot(games=[570])
+    bot._steam_id = "123"
+    bot._games_to_idle = [570]
+    bot._inventory_before = {"old": MagicMock()}
+    reader = MagicMock()
+    reader.snapshot.return_value = {}
+    reader.new_cards_by_app.return_value = {}
+    bot._inventory_reader = reader
+
+    bot._capture_inventory_progress(log_result=True)
+
+    reader.snapshot.side_effect = RuntimeError("inventory unavailable")
+    bot._capture_inventory_progress(log_result=True)  # best-effort warning, no crash
+
+
+def test_inventory_progress_does_not_relog_already_drained_game() -> None:
+    card = InventoryCardDrop(asset_id="new", app_id=570, name="Card", game_name="Game")
+    bot = make_bot(games=[570])
+    bot._steam_id = "123"
+    bot._games_to_idle = [570]
+    bot._inventory_before = {"old": MagicMock()}
+    reader = MagicMock()
+    reader.snapshot.return_value = {"new": card}
+    reader.new_cards_by_app.return_value = {570: [card]}
+    bot._inventory_reader = reader
+    bot._idle_tracker.start_session([570], {})
+    bot._idle_tracker.set_cards_before(570, 1)
+    bot._session_drained_app_ids.add(570)
+
+    bot._capture_inventory_progress()
+
+    assert bot._session_drained_app_ids == {570}
+
+
+def test_get_web_session_omits_empty_cookie_argument() -> None:
+    client = MagicMock()
+    client.get_web_session.return_value = {"session": True}
+    bot = make_bot(client=client)
+    bot.settings.steam_web_cookies = {}
+
+    assert bot._get_authenticated_web_session() == {"session": True}
+    assert client.get_web_session.call_args.kwargs == {"username": "user", "password": "pass"}
+
+
+def test_browser_recovery_survives_cookie_persistence_failure(monkeypatch) -> None:
+    monkeypatch.setattr("steam_idle_bot.steam.browser_cookies.load_community_cookies", lambda *_: {"token": "value"})
+    monkeypatch.setattr(
+        "steam_idle_bot.steam.client.SteamClientWrapper._build_web_session_from_cookies",
+        staticmethod(lambda cookies: {"built": cookies}),
+    )
+    bot = make_bot()
+    bot._persist_recovered_web_cookies = MagicMock(side_effect=OSError("read-only"))
+
+    assert bot._recover_session_via_browser("123") is True
+
+
+def test_persist_recovered_cookies_appends_missing_env_key(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("USERNAME=user\n", encoding="utf-8")
+
+    SteamIdleBot._persist_recovered_web_cookies({"sessionid": "abc"})
+
+    assert (tmp_path / ".env").read_text(encoding="utf-8") == 'USERNAME=user\nSTEAM_WEB_COOKIES={"sessionid":"abc"}\n'
+
+
+def test_parse_app_id_list_json_scalar_falls_back_to_csv() -> None:
+    assert _parse_app_id_list("570") == [570]
+
+
+def test_apply_cli_overrides_no_values_keeps_settings_unchanged() -> None:
+    settings = make_settings(max_games_to_idle=7)
+    args = argparse.Namespace(
+        no_trading_cards=False,
+        max_games=None,
+        refresh_interval_seconds=None,
+        no_cache=False,
+        max_checks=None,
+        skip_failures=False,
+        keep_completed_drops=False,
+        checkpoint_minutes=None,
+        duration_minutes=None,
+        post_run_verify_seconds=None,
+    )
+
+    _apply_cli_overrides(settings, args)
+
+    assert settings.filter_trading_cards is True
+    assert settings.max_games_to_idle == 7
+
+
+def test_main_loop_reconnect_with_no_games_does_not_resume_idling() -> None:
+    client = DummyClient()
+    client.connected = False
+    bot = make_bot(client=client)
+
+    ticks = [0]
+
+    def stop_after_reconnect(seconds):
+        ticks[0] += 1
+        if ticks[0] == 2:
+            bot._stop_event.set()
+
+    client.sleep = stop_after_reconnect
+    bot._main_loop([], steam_id="123")
+
+    assert client.start_ok is True  # no resume call is needed for an empty set
+
+
+def test_main_loop_resume_failure_without_fallback_keeps_loop_alive() -> None:
+    client = DummyClient()
+    client.connected = False
+    client.start_ok = False
+    bot = make_bot(client=client)
+    bot._switch_to_steam_utility = MagicMock(return_value=False)
+
+    ticks = [0]
+
+    def stop_after_reconnect(seconds):
+        ticks[0] += 1
+        if ticks[0] == 2:
+            bot._stop_event.set()
+
+    client.sleep = stop_after_reconnect
+    bot._main_loop([570], steam_id="123")
+
+    bot._switch_to_steam_utility.assert_called_once()
+
+
+def test_initial_card_capture_uses_scraper_without_client_steam_id() -> None:
+    gm = DummyGameManager(games=[570])
+    gm.badge_service = DummyBadgeService(result={570: 3})
+    gm._drop_counts = {570: 2}
+    client = DummyClient()
+    client.steam_id = None
+    bot = make_bot(client=client, games=[570])
+    bot.game_manager = gm
+    bot._games_to_idle = [570]
+    bot._idle_tracker.start_session([570], {})
+
+    bot._capture_initial_cards()
+
+    assert bot._idle_tracker.games[570].cards_before == 2
+
+
+def test_final_card_capture_skips_badge_without_client_id_and_keeps_known_count() -> None:
+    """A missing client ID bypasses Badge API but the scraper still runs; it
+    must not overwrite a final count already captured earlier."""
+    gm = DummyGameManager(games=[570])
+    gm.badge_service = DummyBadgeService(result={570: 3})
+    gm.fetch_drop_counts = MagicMock(return_value={570: 1})
+    client = DummyClient()
+    client.steam_id = None
+    bot = make_bot(client=client, games=[570])
+    bot.game_manager = gm
+    bot._steam_id = "123"
+    bot._games_to_idle = [570]
+    bot._idle_tracker.start_session([570], {})
+    bot._idle_tracker.set_cards_after(570, 2)
+
+    bot._capture_final_cards()
+
+    assert bot._idle_tracker.games[570].cards_after == 2
+
+
+def test_final_card_capture_handles_empty_scraper_response() -> None:
+    gm = DummyGameManager(games=[570])
+    gm.fetch_drop_counts = MagicMock(return_value=None)
+    bot = make_bot(games=[570])
+    bot.game_manager = gm
+    bot._steam_id = "123"
+    bot._games_to_idle = [570]
+    bot._idle_tracker.start_session([570], {})
+
+    bot._capture_final_cards()
+
+    assert bot._idle_tracker.games[570].cards_after is None
+
+
+def test_switch_to_steam_utility_rejects_non_wrapper_client() -> None:
+    bot = make_bot()
+    bot.client = object()
+
+    assert bot._switch_to_steam_utility("not a python client") is False
+
+
+def test_main_maintenance_mode_stops_requested_app_ids(monkeypatch) -> None:
+    settings = make_settings()
+    stopped = MagicMock(return_value=1)
+    monkeypatch.setattr(main_module, "_load_settings_from_args", lambda args: settings)
+    monkeypatch.setattr(main_module, "_stop_app_ids", stopped)
+    monkeypatch.setattr(main_module.sys, "argv", ["steam-idle-bot", "--stop-app-ids", "570,730"])
+
+    main_module.main()
+
+    stopped.assert_called_once_with(settings, [570, 730])
+
+
+def test_module_main_guard_runs_cli_help(monkeypatch) -> None:
+    """Execute the module as Python does for ``python -m`` to exercise its
+    `__main__` guard without starting the bot or needing Steam credentials."""
+    monkeypatch.setattr(main_module.sys, "argv", ["steam-idle-bot", "--help"])
+
+    with pytest.warns(RuntimeWarning, match="found in sys.modules"), pytest.raises(SystemExit) as exc_info:
+        runpy.run_module("steam_idle_bot.main", run_name="__main__")
+
+    assert exc_info.value.code == 0
