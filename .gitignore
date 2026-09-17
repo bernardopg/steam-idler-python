@@ -23,6 +23,7 @@ logs/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+*.tsbuildinfo
 
 # Local AI tooling caches
 .headroom/
