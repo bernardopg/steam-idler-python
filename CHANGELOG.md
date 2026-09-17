@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-17
+
+### Changed
+
+- Dependency refresh across the whole stack.
+  - Python (`uv.lock` + floors in `pyproject.toml`): `pydantic` 2.13.4 → 2.13.5, `pydantic-settings` 2.14 → 2.15, `urllib3` 2.7 → 2.8, `fastapi` 0.139 → 0.141.1, `uvicorn[standard]` 0.49 → 0.53, `mypy` 2.1 → 2.3.1, `pytest-timeout` 2.3 → 2.4, `ruff` 0.15.18 → 0.16.8, plus transitive bumps (`anyio`, `click`, `coverage`, `gevent`, `greenlet`, `types-requests`, `websockets`). `steam[client]` and `protobuf` stay pinned as documented.
+  - Frontend: `react`/`react-dom` and their types 19.2 → 19.3, `vite` 8.2 → 8.3, `@vitejs/plugin-react` 6.1.0 → 6.1.1, and `typescript` 6.0.3 → 7.0.2.
+  - GitHub Actions: `astral-sh/setup-uv` v10.0.1 → v10.1.0, `actions/deploy-pages` v5.0.0 → v5.0.1, `softprops/action-gh-release` v3.0.2 → v3.0.3 (all re-pinned by commit SHA). The release workflow now builds the frontend on Node 24 instead of Node 22.
+- Test dependency `httpx` replaced with `httpx2`, following the Starlette deprecation warning emitted by `starlette.testclient` (`Using \`httpx\` with \`starlette.testclient\` is deprecated; install \`httpx2\` instead`). The full suite still passes unchanged.
+- TypeScript moved to the 7.x line, which 1.0.1 deliberately deferred while 7.0 was pre-release. 7.0.2 is stable, and both `tsc -b --force` and the production Vite build are clean, so the project now tracks it.
+
 ## [1.0.1] - 2026-08-26
 
 ### Added
