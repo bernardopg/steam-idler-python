@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-10-14
+
+### Changed
+
+- Dependency refresh across the whole stack.
+  - Python (`uv.lock` + floors in `pyproject.toml`): `pydantic` 2.13.5 → 2.14.1, `pydantic-settings` 2.15 → 2.16, `fastapi` 0.141.1 → 0.143.1, `mypy` 2.3.1 → 2.4.0, `ruff` 0.16.8 → 0.17.0, plus transitive bumps (`ast-serialize`, `cachetools`, `charset-normalizer`, `httptools`, `iniconfig`, `pycparser`, `pycryptodomex`, `python-dotenv`, `starlette`, `truststore`, `types-requests`, `uvloop`, `websockets`; `opentelemetry-api` added as a new transitive dep of Starlette 1.8). `steam[client]` and `protobuf` stay pinned as documented.
+  - Frontend (`package-lock.json`): `react`/`react-dom` 19.3.0 → 19.3.1, `vite` 8.3.1 → 8.3.4, `@vitejs/plugin-react` 6.1.1 → 6.1.2. `npm audit` reports 0 vulnerabilities.
+  - GitHub Actions (all re-pinned by commit SHA): `astral-sh/setup-uv` v10.2.0 → v10.3.0, `actions/upload-artifact` v7.0.1 → v7.0.2, `actions/setup-node` v7.0.0 → v7.1.0, `actions/download-artifact` v8.0.1 → v8.0.2.
+
 ## [1.0.2] - 2026-09-17
 
 ### Changed
