@@ -549,3 +549,42 @@ def test_pid_alive_checks_proc_like_path(tmp_path) -> None:
     assert SteamUtilityIdleClient._pid_alive(123, str(tmp_path)) is False
     (tmp_path / "123").mkdir()
     assert SteamUtilityIdleClient._pid_alive(123, str(tmp_path)) is True
+
+
+def test_run_json_command_times_out_instead_of_hanging() -> None:
+    bridge = SteamUtilityBridge(configured_path=None)
+    bridge._project_root = Path("/tmp/steam-utility")
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("dotnet", 180)) as run, pytest.raises(SteamUtilityError, match="timed out"):
+        bridge.run_json_command("state-report")
+    assert run.call_args.kwargs["timeout"] == 180
+
+
+@pytest.mark.parametrize("target", ["subprocess.run", "subprocess.Popen"])
+def test_missing_dotnet_raises_steam_utility_error(target: str) -> None:
+    bridge = SteamUtilityBridge(configured_path=None)
+    bridge._project_root = Path("/tmp/steam-utility")
+    with patch(target, side_effect=FileNotFoundError("dotnet")), pytest.raises(SteamUtilityError, match="NET SDK"):
+        if target == "subprocess.run":
+            bridge.run_json_command("state-report")
+        else:
+            bridge.spawn_idle_process(570)
+
+
+def test_idle_process_output_is_drained_to_debug_log(caplog) -> None:
+    import io
+    import threading
+
+    from steam_idle_bot.steam.steam_utility import SteamUtilityIdleClient
+
+    process = MagicMock()
+    process.stdout = io.StringIO("idling 570\n" * 3)
+    process.stderr = io.StringIO("warn line\n")
+    with caplog.at_level("DEBUG", logger="steam_idle_bot.steam.steam_utility"):
+        SteamUtilityIdleClient._start_output_drains(570, process)
+        for thread in threading.enumerate():
+            if thread.name.startswith("steam-utility-570-"):
+                thread.join(timeout=2)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages.count("steam-utility idle 570 [stdout]: idling 570") == 3
+    assert "steam-utility idle 570 [stderr]: warn line" in messages

@@ -52,15 +52,15 @@ jobs:
           echo "version=$pyproject_version" >> "$GITHUB_OUTPUT"
 
       - name: Set up UV
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Lint (ruff)
         run: |
@@ -70,18 +70,11 @@ jobs:
       - name: Type-check (mypy)
         run: uv run mypy src
 
-      - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
       - name: Run tests
         env:
           USERNAME: test_user
           PASSWORD: test_pass
-          DISPLAY: ":99"
-        run: |
-          Xvfb :99 -screen 0 1024x768x24 &
-          sleep 1
-          uv run pytest -q --cov=src/steam_idle_bot --cov-fail-under=85
+        run: uv run pytest -q --cov=src/steam_idle_bot --cov-fail-under=85
 
   # ---- Build the artifacts attached to the release ----
   build:
@@ -96,10 +89,7 @@ jobs:
           ref: ${{ inputs.tag || github.ref_name }}
 
       - name: Set up UV
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-
-      - name: Build Python package (sdist + wheel)
-        run: uv build
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -111,8 +101,19 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: |
-          npm ci
+          npm ci --no-fund
           npm run build
+
+      - name: Build Python package (sdist + wheel) with the web UI bundled
+        run: |
+          set -euo pipefail
+          # webapi/static is gitignored and declared as hatch artifacts, so the
+          # wheel installed from PyPI serves the web UI without Node.
+          mkdir -p src/steam_idle_bot/webapi/static
+          cp -r frontend/dist/. src/steam_idle_bot/webapi/static/
+          uv build
+          unzip -l dist/*.whl | grep -q 'steam_idle_bot/webapi/static/index.html' \
+            || { echo "::error::wheel is missing the bundled web UI"; exit 1; }
 
       - name: Package frontend build
         run: |
@@ -201,6 +202,6 @@ jobs:
           name: release-dist
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: dist/

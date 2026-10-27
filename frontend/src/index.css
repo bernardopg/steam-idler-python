@@ -46,6 +46,29 @@ input, select, textarea {
   accent-color: var(--color-em);
 }
 
+/* Visible keyboard focus everywhere; mouse clicks stay ring-free. */
+:focus-visible {
+  outline: 2px solid var(--color-em-bright);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 ::selection {
   background: rgba(16, 185, 129, 0.35);
 }

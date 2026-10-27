@@ -19,9 +19,9 @@ All commands run through `uv` (it auto-syncs the environment).
 ./run.sh --refresh-interval-seconds 300  # re-run the selection pipeline every 5 min
 STEAM_IDLE_SKIP_SYNC=1 ./run.sh --dry-run  # skip runner uv sync for quick local smoke tests
 STEAM_IDLE_RUNNER_VERBOSE=1 ./run.sh       # show uv sync output during runner preflight
-./run-web.sh                    # launch the web UI (== python -m steam_idle_bot --web); builds frontend/ on demand
+./run-web.sh                    # launch the web UI (== python -m steam_idle_bot --web [--web-port N] [--no-browser]); builds frontend/ on demand
 # Frontend dev loop (Vite dev server proxying /api to a running --web backend):
-#   cd frontend && npm install && npm run dev
+#   cd frontend && npm ci && npm run dev
 
 # Direct module entry (needs src/ on PYTHONPATH, which run.sh sets)
 uv run python -m steam_idle_bot [args]
@@ -38,7 +38,7 @@ uv run ruff format .            # format
 uv run mypy src                 # type-check (mypy_path=src, ignore_missing_imports)
 ```
 
-CI (`.github/workflows/ci.yml`) runs pytest+coverage across Python 3.12–3.14 on push/PR to `main`, matching `requires-python = ">=3.12"`. Tests inject `USERNAME=test_user` / `PASSWORD=test_pass` via env so the `Settings` model validates.
+CI (`.github/workflows/ci.yml`) runs ruff+mypy+pytest+coverage across Python 3.12–3.14, a frontend `npm ci && npm run build` job, and a dependency audit (`pip-audit` on the uv export, ignoring only the two protobuf advisories pinned by `steam`, plus `npm audit`) on push/PR to `main`, matching `requires-python = ">=3.12"`. The release workflow copies `frontend/dist` into `src/steam_idle_bot/webapi/static/` (gitignored, declared as hatch `artifacts`) before `uv build`, so the PyPI wheel serves the UI. Tests inject `USERNAME=test_user` / `PASSWORD=test_pass` via env so the `Settings` model validates.
 
 A `.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`) blocks committing `config.py` and staged cache/venv/.vscode files.
 
@@ -48,7 +48,7 @@ A `.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`) blo
 
 - Config precedence (`settings_customise_sources`): init kwargs → env vars → `.env` → secrets. Custom `FlexibleEnvSettingsSource` / `FlexibleDotEnvSettingsSource` tolerantly parse list fields (`GAME_APP_IDS`, `EXCLUDE_APP_IDS` accept JSON `[570,730]` or CSV `570,730`) and the cookie map (`STEAM_WEB_COOKIES` accepts JSON object, browser-export JSON array, or `k=v; k=v`).
 - `Settings.load_from_file()` also imports a legacy `config.py` if present, mapping its UPPER_CASE names to settings fields.
-- `save_to_env_file()` serializes settings back to `.env` — used by the web UI to persist user changes.
+- `save_to_env_file()` serializes settings back to `.env` — used by the web UI to persist user changes. Writes go through `write_private_text()` (atomic replace, mode 0600) and values through `_quote_env_value()` (single-quotes values python-dotenv would otherwise truncate at ` #` or a newline); `main._persist_recovered_web_cookies()` uses the same helpers.
 - CLI flags in `main.py` override loaded settings (`--max-games`, `--refresh-interval-seconds`, `--checkpoint-minutes`, `--duration-minutes`, `--post-run-verify-seconds`, `--no-cache`, `--max-checks`, `--skip-failures`, `--keep-completed-drops`, `--no-trading-cards`). `--stop-app-ids "570,730"` is a maintenance mode that stops running steam-utility idles for those App IDs and exits without starting the bot.
 - **Web session auth**: card-drop scraping needs a `web:community` `steamLoginSecure` (see [[steam-web-cookies-community-audience]] memory). `CardDropChecker._verify_session()` probes `/badges/` (checks `g_steamID = "<id>"`) and downgrades to unauthenticated (excluding unknowns + warning) when the session is logged out — preventing the bot from idling drained games on a store-only/expired token. `AUTO_BROWSER_COOKIES=true` (default) makes `main._recover_session_via_browser()` pull a valid community session from a locally logged-in browser via `steam/browser_cookies.py` (`browser_cookie3`, import-guarded; `BROWSER_COOKIES_BROWSER=auto|chrome|firefox|...`) — self-healing as the short-lived community token rotates.
 - **Card counts**: when the badge API returns no `cards_remaining` (common once all badges are completed), `CardDropChecker._extract_drops_remaining()` parses the count from the badge page ("Jogo pode dar mais N cartas" / "N card drops remaining") into `drop_counts`; `main` feeds these into `IdleTracker` for the status panel and session report.
@@ -77,7 +77,7 @@ Key resilience behavior: if the python backend fails to initialize, login, start
 The three services are distinct: `TradingCardDetector` = *does this game have cards*; `BadgeService` = *badge/cards-remaining via API*; `CardDropChecker` = *drops remaining via scraping*. Authenticated web session from the client is pushed into the scrapers via `set_web_session()` / `set_session()`.
 
 ### Runtime loop & reporting
-`_main_loop()` sleeps in 1s ticks (keeps controller `stop()` responsive), re-runs the selection pipeline every `refresh_interval_seconds` (default 10 min), and reconnects on dropped connections (with steam_utility fallback). Refresh calls use `GameManager.get_games_to_idle(..., quiet=True)` so repeated unchanged scans log progress at DEBUG while warnings/errors stay visible. During refresh, `_capture_inventory_progress()` compares the current trading-card inventory to the pre-run snapshot; if `inventory_drops >= cards_before` for an idled game, the app ID is added to `_session_drained_app_ids` and excluded from the next selection. `IdleTracker` (`utils/idle_tracker.py`) snapshots cards-remaining before/after and inventory drops to compute drops, and writes a session report to `logs/idle_report_*.txt`. `DetailedLogger` (`utils/detailed_logger.py`) dumps per-stage JSON to `logs/`.
+A failed init/login on every backend raises `SteamConnectionError` (never `sys.exit`, which would silently kill the web worker thread). `SteamIdleBot.stop()` called twice sets `_force_stop_event`, which skips the post-run verification wait (slept in 1s ticks). `_main_loop()` sleeps in 1s ticks (keeps controller `stop()` responsive), re-runs the selection pipeline every `refresh_interval_seconds` (default 10 min), and reconnects on dropped connections (with steam_utility fallback). Refresh calls use `GameManager.get_games_to_idle(..., quiet=True)` so repeated unchanged scans log progress at DEBUG while warnings/errors stay visible. During refresh, `_capture_inventory_progress()` compares the current trading-card inventory to the pre-run snapshot; if `inventory_drops >= cards_before` for an idled game, the app ID is added to `_session_drained_app_ids` and excluded from the next selection. `IdleTracker` (`utils/idle_tracker.py`) snapshots cards-remaining before/after and inventory drops to compute drops, and writes a session report to `logs/idle_report_*.txt`. `DetailedLogger` (`utils/detailed_logger.py`) dumps per-stage JSON to `logs/`.
 
 `IdleTracker` reports the source of each drop count: `remaining-count` (before/after card count decreased), `inventory` (inventory confirmed cards while badge/scraper count lagged), or `count+inventory` (both sources agree). This avoids misleading report lines like `Cards: 3 → 3 (+1)` without explaining that inventory was the authoritative source.
 
@@ -92,7 +92,8 @@ stop-app-ids|report`) + WebSocket `/api/ws` (init payload, then log/status/repor
 periodic snapshots), and serves the built React app from `frontend/dist`. The frontend
 (React 19 + Vite + TypeScript + Tailwind 4, dark emerald theme) lives in `frontend/`;
 `test_webapi.py` enforces parity between the React settings form and `Settings` fields.
-Settings PUT masks/reuses the saved password and tolerates CSV list fields.
+Settings GET masks the password, `steam_api_key` and `steam_web_cookies` as `********`; PUT reuses the saved value when it receives the mask (blank password also reuses; blank API key/cookies clear) and tolerates CSV list fields.
+**Web security model**: the API has no login and is local-only. `LocalOriginGuard` (pure ASGI, covers WebSocket) rejects a `Host` outside `allowed_hosts` (loopback by default — anti DNS rebinding) and, for non-GET requests and WS handshakes, an `Origin` that differs from `Host` or `Sec-Fetch-Site: cross-site`. Tests must therefore use `TestClient(..., base_url="http://127.0.0.1:8765")` and absolute `ws://127.0.0.1:8765/api/ws` URLs (`websocket_connect` otherwise forces `testserver`).
 
 ## Conventions
 

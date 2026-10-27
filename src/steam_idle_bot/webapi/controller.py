@@ -115,12 +115,20 @@ class BotController:
         worker.start()
 
     def stop(self) -> None:
+        """Request a graceful stop; a second request skips post-run verification."""
         bot = self._bot
         if bot is None:
             return
         self._set_status("stopping")
         with suppress(Exception):
             bot.stop()
+
+    def pending_auth_payload(self) -> dict[str, bool] | None:
+        """The pending Steam Guard request as JSON, or None."""
+        request = self.pending_auth
+        if request is None:
+            return None
+        return {"is_2fa": request.is_2fa, "code_mismatch": request.code_mismatch}
 
     def provide_auth_code(self, code: str) -> bool:
         """Deliver a Steam Guard code to the blocked worker."""
@@ -239,5 +247,6 @@ class BotController:
             "cards_remaining_known": cards_known,
             "session_drops": total_drops,
             "auth_pending": self.pending_auth is not None,
+            "auth_request": self.pending_auth_payload(),
             "last_error": self.last_error,
         }

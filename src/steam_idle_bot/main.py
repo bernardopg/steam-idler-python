@@ -11,13 +11,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from .config.settings import Settings
+from .config.settings import Settings, _quote_env_value, write_private_text
 from .steam.badges import BadgeService
 from .steam.client import SteamClientWrapper
 from .steam.games import GameManager
 from .steam.inventory import InventoryCardDrop, SteamTradingCardInventory
 from .steam.steam_utility import SteamUtilityIdleClient
 from .steam.trading_cards import TradingCardDetector
+from .utils.exceptions import SteamConnectionError
 from .utils.idle_tracker import IdleTracker
 from .utils.logger import setup_logging
 from .utils.preflight import preflight_warnings
@@ -104,7 +105,9 @@ class SteamIdleBot:
             self.logger.warning(warning)
 
         if not self._ensure_client_ready():
-            sys.exit(1)
+            # Raised rather than sys.exit(): the web UI runs the bot on a worker
+            # thread, where SystemExit would end it silently with no error shown.
+            raise SteamConnectionError("Could not initialize or log in to Steam with any idling backend")
 
         self._configure_authenticated_web_session()
         steam_id = self._resolve_active_steam_id()
@@ -269,8 +272,13 @@ class SteamIdleBot:
                 self.client.sleep(30)
 
     def stop(self) -> None:
-        """Request the bot to stop at the next loop iteration."""
+        """Request the bot to stop at the next loop iteration.
+
+        A repeated request escalates to a forced stop, which skips the slow
+        post-run card re-verification (same contract as :meth:`signal_stop`).
+        """
         if self._stop_event.is_set():
+            self._force_stop_event.set()
             return
 
         self.logger.info("Stop requested")
@@ -526,8 +534,12 @@ class SteamIdleBot:
         # the actual drops at the moment idling stops.
         delay = self.settings.post_run_verify_seconds
         if delay > 0 and self._games_to_idle and not self._force_stop_event.is_set():
-            self.logger.info("Re-verifying card counts in %ds (post-run verification)...", delay)
-            self.client.sleep(delay)
+            self.logger.info("Re-verifying card counts in %ds (post-run verification; stop again to skip)...", delay)
+            # Sleep in 1s ticks so a second stop request can cut the wait short.
+            for _ in range(delay):
+                if self._force_stop_event.is_set():
+                    break
+                self.client.sleep(1)
             with contextlib.suppress(Exception):
                 self._capture_final_cards()
             with contextlib.suppress(Exception):
@@ -637,7 +649,7 @@ class SteamIdleBot:
         recovered cookie line instead.
         """
         target = Path(".env")
-        rendered = "STEAM_WEB_COOKIES=" + json.dumps(cookies, ensure_ascii=False, separators=(",", ":"))
+        rendered = "STEAM_WEB_COOKIES=" + _quote_env_value(json.dumps(cookies, ensure_ascii=False, separators=(",", ":")))
         lines = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
 
         for index, line in enumerate(lines):
@@ -647,7 +659,7 @@ class SteamIdleBot:
         else:
             lines.append(rendered)
 
-        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        write_private_text(target, "\n".join(lines) + "\n")
 
     def _configure_authenticated_web_session(self) -> None:
         """Configure the scraping layer with any authenticated web session available."""
@@ -779,6 +791,12 @@ Examples:
         type=int,
         default=8765,
         help="Port for the web UI server (default 8765)",
+    )
+
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="With --web, do not open a browser tab automatically",
     )
 
     parser.add_argument(
@@ -932,7 +950,7 @@ def main() -> None:
         if (getattr(args, "web", False) or args.gui) and not getattr(args, "stop_app_ids", None):
             from .webapi import launch_web
 
-            launch_web(port=getattr(args, "web_port", 8765))
+            launch_web(port=getattr(args, "web_port", 8765), open_browser=not getattr(args, "no_browser", False))
             return
 
         settings = _load_settings_from_args(args)

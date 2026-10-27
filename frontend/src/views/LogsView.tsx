@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Icon } from '../components/Icon'
 import type { LogLine } from '../types'
 
 const LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const
@@ -36,9 +37,13 @@ export function LogsView({ logs, onClear }: LogsViewProps) {
   }, [filtered, autoScroll])
 
   async function copyAll() {
-    await navigator.clipboard.writeText(filtered.map((l) => l.line).join('\n'))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    try {
+      await navigator.clipboard.writeText(filtered.map((l) => l.line).join('\n'))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard needs a secure context / permission; nothing to recover */
+    }
   }
 
   return (
@@ -48,11 +53,12 @@ export function LogsView({ logs, onClear }: LogsViewProps) {
           <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
           Auto-scroll
         </label>
-        <div className="flex overflow-hidden rounded-lg border border-edge">
+        <div className="flex overflow-hidden rounded-lg border border-edge" role="group" aria-label="Filtrar por nível">
           {(['ALL', ...LEVELS] as LevelFilter[]).map((level) => (
             <button
               key={level}
               onClick={() => setLevelFilter(level)}
+              aria-pressed={levelFilter === level}
               className={`px-2.5 py-1 text-xs font-medium transition ${
                 levelFilter === level ? 'bg-raised text-em-soft' : 'text-dim hover:text-mut'
               }`}
@@ -62,26 +68,33 @@ export function LogsView({ logs, onClear }: LogsViewProps) {
           ))}
         </div>
         <input
+          type="search"
+          aria-label="Buscar nos logs"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar nos logs…"
           className="w-44 rounded-lg border border-edge bg-raised px-3 py-1.5 text-xs text-ink outline-none focus:border-em"
         />
-        <button onClick={copyAll} className="text-mut transition hover:text-em-soft">
-          {copied ? '✓ Copiado' : 'Copiar'}
+        <button onClick={copyAll} className="inline-flex items-center gap-1.5 text-mut transition hover:text-em-soft">
+          <Icon name={copied ? 'check' : 'copy'} />
+          {copied ? 'Copiado' : 'Copiar'}
         </button>
-        <button onClick={onClear} className="text-mut transition hover:text-err">
-          Limpar
+        <button onClick={onClear} className="text-mut transition hover:text-err" title="Limpa só esta tela; o arquivo em logs/runs/ continua completo">
+          Limpar tela
         </button>
         <span className="tnum ml-auto text-xs text-dim">
           {filtered.length}/{logs.length} linhas
         </span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-edge-soft bg-surface p-4 font-mono text-xs leading-relaxed">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-edge-soft bg-surface p-4 font-mono text-xs leading-relaxed"
+        role="log"
+        aria-live="off"
+      >
         {logs.length === 0 && <p className="text-dim">Sem logs ainda. Inicie o bot para acompanhar a sessão aqui.</p>}
         {logs.length > 0 && filtered.length === 0 && <p className="text-dim">Nenhuma linha corresponde ao filtro.</p>}
-        {filtered.map((log, index) => (
-          <p key={index} className={`whitespace-pre-wrap ${levelClass[log.level] ?? 'text-mut'}`}>
+        {filtered.map((log) => (
+          <p key={log.id} className={`whitespace-pre-wrap ${levelClass[log.level] ?? 'text-mut'}`}>
             {log.line}
           </p>
         ))}

@@ -16,13 +16,20 @@ DIST_DIR="$FRONTEND_DIR/dist"
 needs_build=0
 if [[ ! -d "$DIST_DIR" ]]; then
   needs_build=1
-elif [[ -n "$(find "$FRONTEND_DIR/src" "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/package.json" -newer "$DIST_DIR" -print -quit 2>/dev/null)" ]]; then
+elif [[ -n "$(find "$FRONTEND_DIR/src" "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/package.json" "$FRONTEND_DIR/package-lock.json" "$FRONTEND_DIR/vite.config.ts" -newer "$DIST_DIR" -print -quit 2>/dev/null)" ]]; then
   needs_build=1
 fi
 
 if [[ "$needs_build" == "1" ]]; then
   echo "🔨 Building frontend..."
-  (cd "$FRONTEND_DIR" && npm install --silent && npm run build) || exit 1
+  (
+    cd "$FRONTEND_DIR" || exit 1
+    # npm ci installs exactly what package-lock.json pins (never rewrites it).
+    if [[ ! -d node_modules || package-lock.json -nt node_modules ]]; then
+      npm ci --silent --no-audit --no-fund || exit 1
+    fi
+    npm run build
+  ) || exit 1
 fi
 
 if [[ "${STEAM_IDLE_SKIP_SYNC:-}" != "1" ]]; then
@@ -30,5 +37,6 @@ if [[ "${STEAM_IDLE_SKIP_SYNC:-}" != "1" ]]; then
   uv sync --quiet || exit 1
 fi
 
-echo "🚀 Starting web UI at http://127.0.0.1:${STEAM_IDLE_WEB_PORT:-8765} (Ctrl+C stops)"
+# The server prints the exact URL (it honours --web-port).
+echo "🚀 Starting web UI..."
 exec uv run python -m steam_idle_bot --web "$@"

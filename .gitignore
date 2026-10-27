@@ -23,6 +23,8 @@ logs/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+# Release-time copy of frontend/dist bundled into the wheel
+src/steam_idle_bot/webapi/static/
 *.tsbuildinfo
 
 # Local AI tooling caches

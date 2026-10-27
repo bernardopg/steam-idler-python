@@ -11,30 +11,46 @@ Endpoints:
 - GET  /api/report         → last session report text
 - WS   /api/ws             → init payload, then log/status/report/auth events + snapshots
 
-The built frontend (frontend/dist) is served at /; run `npm run build` in
-frontend/ (or ./run-web.sh, which does it on demand).
+The built frontend is served at /: a wheel ships it under ``webapi/static``;
+a source checkout uses frontend/dist (run `npm run build` in frontend/, or
+./run-web.sh, which does it on demand).
+
+The API has no login: it is meant for the local machine only. A guard rejects
+requests whose ``Host`` is not a loopback name (DNS rebinding) and mutating
+requests or WebSocket handshakes coming from another origin (CSRF and
+cross-site WebSocket hijacking). Secrets are masked in ``GET /api/settings``
+and reused when the client sends the mask back unchanged.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..config.settings import Settings, _parse_int_list
 from .controller import BotController
 
+_PACKAGED_DIST = Path(__file__).resolve().parent / "static"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-FRONTEND_DIST = _REPO_ROOT / "frontend" / "dist"
+# Installed wheels carry the build in webapi/static; source checkouts use frontend/dist.
+FRONTEND_DIST = _PACKAGED_DIST if (_PACKAGED_DIST / "index.html").is_file() else _REPO_ROOT / "frontend" / "dist"
+
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 _MASK = "********"
+# Secrets other than the password: masked on GET, kept when the mask comes back.
+_SECRET_FIELDS = ("steam_api_key", "steam_web_cookies")
 _WS_POLL_SECONDS = 0.3
 _WS_SNAPSHOT_EVERY = 4  # polls between snapshot pushes (~1.2s)
 
@@ -48,7 +64,60 @@ class AuthCodeRequest(BaseModel):
 
 
 class StopAppIdsRequest(BaseModel):
-    app_ids: list[int]
+    app_ids: list[int] = Field(min_length=1, max_length=64)
+
+
+def _hostname(netloc: str) -> str:
+    """Return the lowercase host of a ``host[:port]`` value (IPv6 brackets removed)."""
+    return (urlsplit(f"//{netloc}").hostname or "").lower()
+
+
+class LocalOriginGuard:
+    """ASGI middleware that keeps the API reachable from the local UI only.
+
+    - ``Host`` must name an allowed host, which defeats DNS rebinding: a page
+      on ``evil.example`` that re-resolves to 127.0.0.1 still sends its own
+      name as ``Host``.
+    - Mutating requests and WebSocket handshakes must not come from another
+      origin: a present ``Origin`` must equal the ``Host`` the request was
+      sent to, and ``Sec-Fetch-Site: cross-site`` is refused.
+    """
+
+    def __init__(self, app: ASGIApp, allowed_hosts: Iterable[str]) -> None:
+        self.app = app
+        self.allowed_hosts = frozenset(host.lower().strip("[]") for host in allowed_hosts)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        headers = {key.decode("latin-1"): value.decode("latin-1") for key, value in scope.get("headers", [])}
+        reason = self._rejection_reason(scope, headers)
+        if reason is None:
+            await self.app(scope, receive, send)
+            return
+
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1008, "reason": reason})
+            return
+        response = JSONResponse({"detail": reason}, status_code=403)
+        await response(scope, receive, send)
+
+    def _rejection_reason(self, scope: Scope, headers: dict[str, str]) -> str | None:
+        host = headers.get("host", "")
+        if _hostname(host) not in self.allowed_hosts:
+            return "Host not allowed: the web UI only answers on localhost"
+
+        needs_same_origin = scope["type"] == "websocket" or scope.get("method", "GET") not in _SAFE_METHODS
+        if not needs_same_origin:
+            return None
+        if headers.get("sec-fetch-site") == "cross-site":
+            return "Cross-site request refused"
+        origin = headers.get("origin")
+        if origin is not None and urlsplit(origin).netloc.lower() != host.lower():
+            return "Cross-origin request refused"
+        return None
 
 
 def _load_current_settings() -> Settings | None:
@@ -61,9 +130,8 @@ def _load_current_settings() -> Settings | None:
 def _settings_to_dto(settings: Settings) -> dict[str, Any]:
     data = settings.model_dump()
     data["password"] = _MASK if settings.password else ""
-    cookies = data.get("steam_web_cookies") or {}
-    if isinstance(cookies, dict):
-        data["steam_web_cookies"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    for secret in _SECRET_FIELDS:
+        data[secret] = _MASK if data.get(secret) else ""
     return data
 
 
@@ -74,15 +142,21 @@ def _coerce_settings_payload(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(data.get(list_field), str):
             data[list_field] = _parse_int_list(data[list_field])
 
-    if data.get("password") in ("", _MASK):
+    current: Settings | None = None
+    if data.get("password") in (None, "", _MASK):
         current = _load_current_settings()
         if current is None:
-            raise HTTPException(status_code=422, detail="Password required: no saved credentials to reuse")
+            raise HTTPException(status_code=422, detail=[{"field": "password", "message": "Password required: no saved credentials to reuse"}])
         data["password"] = current.password
+
+    for secret in _SECRET_FIELDS:
+        if data.get(secret) == _MASK:
+            current = current or _load_current_settings()
+            data[secret] = getattr(current, secret) if current is not None else None
     return data
 
 
-def create_app(controller: BotController | None = None) -> FastAPI:
+def create_app(controller: BotController | None = None, *, allowed_hosts: Iterable[str] = LOOPBACK_HOSTS) -> FastAPI:
     controller = controller or BotController()
 
     @asynccontextmanager
@@ -92,6 +166,7 @@ def create_app(controller: BotController | None = None) -> FastAPI:
 
     app = FastAPI(title="Steam Idle Bot", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.controller = controller
+    app.add_middleware(LocalOriginGuard, allowed_hosts=allowed_hosts)
 
     # ------------------------------------------------------------------
     # REST
@@ -173,6 +248,7 @@ def create_app(controller: BotController | None = None) -> FastAPI:
                 "logs": controller.log_backlog(),
                 "report": controller.last_report,
                 "auth_pending": controller.pending_auth is not None,
+                "auth_request": controller.pending_auth_payload(),
             }
         )
         polls = 0
@@ -201,7 +277,7 @@ def create_app(controller: BotController | None = None) -> FastAPI:
             return JSONResponse(
                 {
                     "error": "Frontend not built",
-                    "hint": "Run `npm install && npm run build` inside frontend/ or use ./run-web.sh",
+                    "hint": "Run `npm ci && npm run build` inside frontend/ or use ./run-web.sh",
                 }
             )
 
@@ -209,13 +285,24 @@ def create_app(controller: BotController | None = None) -> FastAPI:
 
 
 def launch_web(host: str = "127.0.0.1", port: int = 8765, *, open_browser: bool = True) -> None:
-    """Run the web UI server (blocking)."""
+    """Run the web UI server (blocking).
+
+    The API has no authentication, so binding to a non-loopback address only
+    widens who can reach the port; the Host guard still answers only to the
+    bind address and loopback names.
+    """
     import threading
     import webbrowser
 
     import uvicorn
 
-    app = create_app()
+    allowed_hosts = set(LOOPBACK_HOSTS)
+    if host not in ("0.0.0.0", "::"):
+        allowed_hosts.add(host)
+    app = create_app(allowed_hosts=allowed_hosts)
+    browse_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    url = f"http://{browse_host}:{port}"
+    print(f"Steam Idle Bot web UI: {url}  (Ctrl+C to stop)")
     if open_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(f"http://{host}:{port}")).start()
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=host, port=port, log_level="warning")

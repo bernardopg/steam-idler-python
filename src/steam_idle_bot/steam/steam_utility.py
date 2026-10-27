@@ -10,13 +10,31 @@ import logging
 import os
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from ..utils.redaction import mask_username
 
 logger = logging.getLogger(__name__)
+
+# `dotnet run` compiles the CLI on first use, so allow a slow first call while
+# still failing instead of hanging forever when the tool wedges.
+_JSON_COMMAND_TIMEOUT_SECONDS = 180
+
+
+def _drain_stream(stream: IO[str], app_id: int, label: str) -> None:
+    """Forward a child's output to DEBUG logs until EOF.
+
+    Idle processes run for hours; an unread PIPE fills its buffer (~64 KiB)
+    and the child then blocks on its next write, which silently stops idling.
+    """
+    with contextlib.suppress(Exception):
+        for line in iter(stream.readline, ""):
+            text = line.rstrip()
+            if text:
+                logger.debug("steam-utility idle %s [%s]: %s", app_id, label, text)
 
 
 def _extract_idle_app_id(args: list[str]) -> int | None:
@@ -65,22 +83,28 @@ class SteamUtilityBridge:
 
     def run_json_command(self, command: str, *positionals: str) -> Any:
         """Execute a steam-utility command that emits JSON."""
-        completed = subprocess.run(
-            [
-                "dotnet",
-                "run",
-                "--project",
-                str(self.cli_project_path),
-                "--",
-                command,
-                *positionals,
-                "--json",
-            ],
-            cwd=self.project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    str(self.cli_project_path),
+                    "--",
+                    command,
+                    *positionals,
+                    "--json",
+                ],
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_JSON_COMMAND_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise SteamUtilityError(f"steam-utility command {command!r} timed out after {_JSON_COMMAND_TIMEOUT_SECONDS}s") from exc
+        except OSError as exc:
+            raise SteamUtilityError(f"Could not run dotnet for steam-utility ({exc}); is the .NET SDK installed?") from exc
         if completed.returncode != 0:
             stderr = completed.stderr.strip()
             raise SteamUtilityError(f"steam-utility command {command!r} failed with code {completed.returncode}: {stderr or 'no stderr'}")
@@ -96,21 +120,24 @@ class SteamUtilityBridge:
 
     def spawn_idle_process(self, app_id: int) -> subprocess.Popen[str]:
         """Launch a long-running native idling process for a single app."""
-        return subprocess.Popen(
-            [
-                "dotnet",
-                "run",
-                "--project",
-                str(self.cli_project_path),
-                "--",
-                "idle",
-                str(app_id),
-            ],
-            cwd=self.project_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        try:
+            return subprocess.Popen(
+                [
+                    "dotnet",
+                    "run",
+                    "--project",
+                    str(self.cli_project_path),
+                    "--",
+                    "idle",
+                    str(app_id),
+                ],
+                cwd=self.project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as exc:
+            raise SteamUtilityError(f"Could not run dotnet for steam-utility ({exc}); is the .NET SDK installed?") from exc
 
     def find_idle_pids(self, proc_root: str = "/proc") -> dict[int, list[int]]:
         """Map app_id -> sorted PIDs of running steam-utility idle processes.
@@ -336,9 +363,24 @@ class SteamUtilityIdleClient:
                 continue
 
             self._processes[app_id] = new_process
+            self._start_output_drains(app_id, new_process)
             logger.info("Started native idling for app %s", app_id)
 
         return started_all and self.is_connected()
+
+    @staticmethod
+    def _start_output_drains(app_id: int, process: subprocess.Popen[str]) -> None:
+        """Keep the child's stdout/stderr pipes flowing for its whole lifetime."""
+        for label in ("stdout", "stderr"):
+            stream = getattr(process, label, None)
+            if stream is None or not hasattr(stream, "readline"):
+                continue
+            threading.Thread(
+                target=_drain_stream,
+                args=(stream, app_id, label),
+                daemon=True,
+                name=f"steam-utility-{app_id}-{label}",
+            ).start()
 
     def stop_idling(self) -> bool:
         """Stop all native idling processes (adopted external idles are left running)."""

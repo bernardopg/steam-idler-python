@@ -1,6 +1,9 @@
 """Configuration management using Pydantic v2 for type safety and validation."""
 
+import contextlib
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
@@ -111,6 +114,41 @@ def _parse_cookie_map(value: Any) -> Any:
         cookies[key] = cookie_value
 
     return cookies if cookies else value
+
+
+def _quote_env_value(value: str) -> str:
+    """Render *value* so python-dotenv reads it back unchanged.
+
+    Unquoted values are cut at `` #`` (an inline comment) and stop at a line
+    break, and a leading quote starts a quoted value, so such values go in
+    single quotes with ``\\`` and ``'`` escaped. Note that ``${NAME}`` is still
+    expanded by python-dotenv in any form.
+    """
+    needs_quotes = value != value.strip() or value[:1] in ("'", '"') or any(char in value for char in "#\n\r")
+    if not needs_quotes:
+        return value
+    escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{escaped}'"
+
+
+def write_private_text(target: Path, text: str) -> None:
+    """Atomically replace *target* with *text*, readable by the owner only (0600).
+
+    The .env holds the Steam password and session cookies, so it must not
+    inherit a world-readable umask, and a crash mid-write must not truncate it.
+    """
+    target = Path(target)
+    directory = target.parent if str(target.parent) else Path(".")
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def _prepare_special_field_value(field_name: str, value: Any) -> tuple[bool, Any]:
@@ -290,9 +328,6 @@ class Settings(BaseSettings):
         description="Re-scrape card counts this many seconds after stopping, to catch lagging badge updates (0 disables)",
     )
 
-    # Security
-    enable_encryption: bool = Field(default=False, description="Enable encryption for stored credentials")
-
     @field_validator("username", "password")
     @classmethod
     def validate_credentials(cls, v: str, info):
@@ -301,7 +336,7 @@ class Settings(BaseSettings):
             v = v.strip()
             if v.lower() in {"", "your_steam_username", "your_steam_password"}:
                 field_name = getattr(info, "field_name", "credential")
-                raise ValueError(f"Invalid {field_name}: please provide real credentials, not placeholder values from config_example.py")
+                raise ValueError(f"Invalid {field_name}: please provide real credentials, not placeholder values from .env.example")
         return v
 
     @field_validator("game_app_ids", mode="before")
@@ -455,7 +490,6 @@ class Settings(BaseSettings):
             "checkpoint_minutes": "CHECKPOINT_MINUTES",
             "duration_minutes": "DURATION_MINUTES",
             "post_run_verify_seconds": "POST_RUN_VERIFY_SECONDS",
-            "enable_encryption": "ENABLE_ENCRYPTION",
         }
 
         lines: list[str] = []
@@ -476,7 +510,7 @@ class Settings(BaseSettings):
             else:
                 rendered = str(value)
 
-            lines.append(f"{env_name}={rendered}")
+            lines.append(f"{env_name}={_quote_env_value(rendered)}")
 
-        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        write_private_text(target, "\n".join(lines) + "\n")
         return target

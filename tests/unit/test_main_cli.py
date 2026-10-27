@@ -10,6 +10,7 @@ import pytest
 
 from steam_idle_bot.config.settings import Settings
 from steam_idle_bot.main import SteamIdleBot, create_parser, main
+from steam_idle_bot.utils.exceptions import SteamConnectionError
 
 main_module = importlib.import_module("steam_idle_bot.main")
 
@@ -152,15 +153,13 @@ def test_run_normal_mode_failure_paths(monkeypatch):
     bot = _build_bot()
 
     bot.client.init_ok = False
-    with patch_sys_exit(monkeypatch) as exits, pytest.raises(SystemExit):
+    with pytest.raises(SteamConnectionError):
         bot._run_normal_mode()
-    assert exits == [1]
 
     bot = _build_bot()
     bot.client.login_ok = False
-    with patch_sys_exit(monkeypatch) as exits, pytest.raises(SystemExit):
+    with pytest.raises(SteamConnectionError):
         bot._run_normal_mode()
-    assert exits == [1]
 
     bot = _build_bot()
     bot.game_manager = DummyGameManager([])
@@ -518,11 +517,11 @@ def test_main_gui_flag_redirects_to_web(monkeypatch, capsys):
     launched = {}
 
     monkeypatch.setattr(main_module, "create_parser", lambda: parser)
-    monkeypatch.setattr("steam_idle_bot.webapi.launch_web", lambda port=8765: launched.setdefault("port", port))
+    monkeypatch.setattr("steam_idle_bot.webapi.launch_web", lambda port=8765, open_browser=True: launched.update(port=port, open_browser=open_browser))
 
     main()
 
-    assert launched["port"] == 8765
+    assert launched == {"port": 8765, "open_browser": True}
     assert "deprecated" in capsys.readouterr().out
 
 
@@ -635,4 +634,26 @@ def test_post_run_verification_recaptures(tmp_path, monkeypatch):
     bot._show_session_report()
 
     assert calls["capture"] == 2  # immediate + delayed
-    assert calls["slept"] == [5]
+    assert calls["slept"] == [1] * 5
+
+
+def test_post_run_verification_wait_is_cut_short_by_second_stop(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    bot = _build_bot(make_settings(post_run_verify_seconds=30))
+    bot._games_to_idle = [10]
+    slept: list[float] = []
+
+    def _sleep(seconds):
+        slept.append(seconds)
+        if len(slept) == 2:
+            bot.stop()  # first request
+            bot.stop()  # repeated request escalates to a forced stop
+
+    monkeypatch.setattr(bot, "_capture_final_cards", lambda: None)
+    monkeypatch.setattr(bot.client, "sleep", _sleep)
+    monkeypatch.setattr(bot._idle_tracker, "save_report", lambda p: None)
+
+    bot._show_session_report()
+
+    assert slept == [1, 1]
+    assert bot._force_stop_event.is_set()

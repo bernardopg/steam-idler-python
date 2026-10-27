@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   lint-and-test:
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -28,23 +29,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up UV
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Cache UV
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --locked --dev
 
       - name: Lint (ruff)
         run: |
@@ -54,19 +50,12 @@ jobs:
       - name: Type-check (mypy)
         run: uv run mypy src
 
-      - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
       - name: Run tests (pytest + coverage)
         env:
           # Minimal credentials for Settings model in tests when needed
           USERNAME: test_user
           PASSWORD: test_pass
-          DISPLAY: ":99"
-        run: |
-          Xvfb :99 -screen 0 1024x768x24 &
-          sleep 1
-          uv run pytest -q --cov=src/steam_idle_bot --cov-report=xml --cov-fail-under=85
+        run: uv run pytest -q --cov=src/steam_idle_bot --cov-report=xml --cov-fail-under=85
 
       - name: Upload coverage report
         if: always()
@@ -75,3 +64,56 @@ jobs:
           name: coverage-xml-${{ matrix.python-version }}
           path: coverage.xml
           retention-days: 7
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-fund
+
+      - name: Type-check and build
+        run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Audit Python dependencies (pip-audit)
+        # protobuf stays <4 because steam[client] 1.4.x requires it; its two
+        # DoS advisories are accepted (see the note in pyproject.toml).
+        run: |
+          uv export --locked --format requirements-txt --no-hashes --all-groups --no-emit-project > requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip --progress-spinner off \
+            --ignore-vuln PYSEC-2026-1805 \
+            --ignore-vuln PYSEC-2026-1806
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Audit frontend dependencies (npm audit)
+        working-directory: frontend
+        run: npm audit --audit-level=moderate

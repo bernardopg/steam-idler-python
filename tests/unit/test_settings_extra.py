@@ -69,3 +69,25 @@ def test_save_to_env_serializes_browser_cookie_export(tmp_path) -> None:
     target = settings.save_to_env_file(tmp_path / ".env")
 
     assert 'STEAM_WEB_COOKIES=[{"name":"sessionid","value":"abc"}]' in target.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "password",
+    ["p #ss", "#leading", "multi\nline", " padded ", "'quoted'", '"dq"', "back\\slash #x", "it's #1", "plain$dollar"],
+)
+def test_save_to_env_round_trips_awkward_values(tmp_path, monkeypatch, password) -> None:
+    monkeypatch.chdir(tmp_path)
+    for var in ("USERNAME", "PASSWORD"):
+        monkeypatch.delenv(var, raising=False)
+    Settings(username="user", password=password).save_to_env_file(tmp_path / ".env")
+
+    assert Settings().password == password.strip()
+    assert ((tmp_path / ".env").stat().st_mode & 0o777) == 0o600
+
+
+def test_save_to_env_leaves_simple_values_unquoted(tmp_path) -> None:
+    target = Settings(username="user", password="s3cr3t!").save_to_env_file(tmp_path / ".env")
+    text = target.read_text(encoding="utf-8")
+    assert "USERNAME=user\n" in text
+    assert "PASSWORD=s3cr3t!\n" in text
+    assert not list(tmp_path.glob(".env.*.tmp"))

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Icon } from '../components/Icon'
 
 interface ReportViewProps {
   report: string
@@ -8,9 +9,13 @@ export function ReportView({ report }: ReportViewProps) {
   const [copied, setCopied] = useState(false)
 
   async function copy() {
-    await navigator.clipboard.writeText(report)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    try {
+      await navigator.clipboard.writeText(report)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard needs a secure context / permission; the download still works */
+    }
   }
 
   function download() {
@@ -30,11 +35,13 @@ export function ReportView({ report }: ReportViewProps) {
   return (
     <div className="space-y-3">
       <div className="flex gap-4">
-        <button onClick={copy} className="text-sm text-mut transition hover:text-em-soft">
-          {copied ? '✓ Copiado' : 'Copiar relatório'}
+        <button onClick={copy} className="inline-flex items-center gap-1.5 text-sm text-mut transition hover:text-em-soft">
+          <Icon name={copied ? 'check' : 'copy'} />
+          {copied ? 'Copiado' : 'Copiar relatório'}
         </button>
-        <button onClick={download} className="text-sm text-mut transition hover:text-em-soft">
-          ⬇ Baixar .txt
+        <button onClick={download} className="inline-flex items-center gap-1.5 text-sm text-mut transition hover:text-em-soft">
+          <Icon name="download" />
+          Baixar .txt
         </button>
       </div>
       <pre className="overflow-x-auto rounded-xl border border-edge-soft bg-surface p-5 font-mono text-xs leading-relaxed text-ink">

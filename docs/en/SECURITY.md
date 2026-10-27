@@ -30,6 +30,17 @@ This bot uses real Steam credentials and **session cookies**, which are as sensi
 - The bot only talks to official Steam endpoints over HTTPS; no data is sent anywhere else.
 - `AUTO_BROWSER_COOKIES` reads cookies from your local browser only, on your machine. Nothing is uploaded.
 - Prefer a dedicated/secondary Steam account, and rotate your Web API key if you suspect exposure.
+- `.env` is written with owner-only permissions (`0600`). If you created it by hand, run `chmod 600 .env`.
+
+## Web UI exposure
+
+The web UI (`--web`) has **no login**. It is meant to be opened only on the machine running the bot:
+
+- It binds to `127.0.0.1` and only answers requests whose `Host` is a loopback name, which blocks DNS-rebinding attacks from websites you visit.
+- Changes (start/stop, settings, Steam Guard codes) and the live WebSocket refuse requests from other origins (CSRF / cross-site WebSocket hijacking).
+- Secrets (password, Web API key, session cookies) are never sent back to the browser; they are shown masked.
+
+Do not expose the port to a network or the internet (port-forwarding, `0.0.0.0` binds, public tunnels). To reach it remotely, use an SSH tunnel: `ssh -L 8765:127.0.0.1:8765 host`.
 
 ## Known / accepted advisories
 

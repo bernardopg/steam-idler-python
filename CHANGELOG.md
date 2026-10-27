@@ -6,6 +6,49 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+### Security
+
+- Web UI: a new `LocalOriginGuard` middleware rejects requests whose `Host` is not a loopback name (DNS rebinding could previously read `GET /api/settings`, including the Steam API key and session cookies, from any website), and refuses cross-origin mutating requests and WebSocket handshakes (CSRF on `/api/bot/stop`, cross-site WebSocket hijacking of live logs).
+- `GET /api/settings` now masks `STEAM_API_KEY` and `STEAM_WEB_COOKIES` like the password. Sending the mask back keeps the saved value; sending a blank value clears it.
+- `.env` is written atomically with mode `0600`. Values containing ` #`, line breaks, or leading/trailing spaces or quotes are now quoted, so python-dotenv reads them back unchanged. Before, a password such as `abc #1` was silently cut to `abc`.
+- `certifi` 2026.7.22 → 2026.10.23 (PYSEC-2026-4320).
+
+### Fixed
+
+- A failed Steam login or initialization raises `SteamConnectionError` instead of calling `sys.exit(1)`. On the web UI worker thread, `SystemExit` had ended the run silently and showed "Parado" with no error.
+- steam-utility idle processes no longer hang once their stdout/stderr buffer fills: both pipes are drained to DEBUG logs. `dotnet run` JSON commands time out after 180 s, and a missing .NET SDK is reported as `SteamUtilityError`.
+- The web UI restores the correct Steam Guard prompt (e-mail vs. mobile, wrong-code notice) after a reconnect.
+- The wheel published to PyPI now ships the built web UI, so `steam-idle-bot --web` works without a source checkout or Node.js.
+
+### Changed
+
+- Stopping a second time forces the stop and skips the post-run card re-verification wait, from both the web UI ("Forçar parada") and the API.
+- New `--no-browser` flag for `--web`. The server prints the URL it listens on.
+- Removed the `ENABLE_ENCRYPTION` setting. It never encrypted anything, yet the UI offered it as "Criptografar credenciais". Old `.env` files that still set it are ignored.
+- Web UI:
+  - per-field validation errors;
+  - secret fields with "Alterar" / "Manter o valor salvo";
+  - fields disabled when their toggle is off;
+  - unsaved-changes guard;
+  - a sticky save bar;
+  - a maintenance panel to stop leftover steam-utility idles (`/api/stop-app-ids`);
+  - SVG icons and a logo in place of mixed emoji;
+  - visible keyboard focus, `prefers-reduced-motion`, and dialog, label and table semantics;
+  - a WebSocket reconnect backoff;
+  - an error-colored unread-logs dot.
+- `run-web.sh` installs with `npm ci` (lockfile-exact) and rebuilds when the lockfile or Vite config changes.
+- CI:
+  - new frontend build job;
+  - new dependency-audit job (`pip-audit` + `npm audit`);
+  - `uv sync --locked`;
+  - uv's built-in cache;
+  - Xvfb dropped (no test needs a display since the Tk GUI was removed).
+- Dependabot now covers `uv.lock` and `frontend/` (npm), with grouped minor/patch updates.
+- Dependency refresh:
+  - Python: `fastapi` 0.143.1 → 0.162.0, `starlette` 1.8.0 → 1.10.0, `pydantic-settings` 2.16.0 → 2.16.1, `httpx2` 2.13.1 → 2.16.0, `ruff` 0.17.0 → 0.17.3, plus transitive bumps;
+  - frontend: `vite` 8.3.4 → 8.3.5;
+  - Actions: `astral-sh/setup-uv` v10.3.0 → v10.3.2, `actions/setup-python` v7.0.0 → v7.1.0, `pypa/gh-action-pypi-publish` v1.14.2 → v1.14.3.
+
 ## [1.0.3] - 2026-10-14
 
 ### Changed

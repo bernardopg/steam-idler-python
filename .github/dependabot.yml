@@ -5,10 +5,29 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-  - package-ecosystem: "pip"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # uv.lock pins the whole Python tree; the uv ecosystem updates it directly.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    allow:
-      - dependency-type: "all"
+    ignore:
+      # Held below 4 by steam[client] 1.4.x (see pyproject.toml).
+      - dependency-name: "protobuf"
+        update-types: ["version-update:semver-major"]
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch:
+        update-types: ["minor", "patch"]

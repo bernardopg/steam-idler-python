@@ -6,6 +6,11 @@ export interface GameRow {
   idle_minutes: number
 }
 
+export interface AuthRequest {
+  is_2fa: boolean
+  code_mismatch: boolean
+}
+
 export interface Snapshot {
   status: 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
   running: boolean
@@ -17,17 +22,19 @@ export interface Snapshot {
   cards_remaining_known: number | null
   session_drops: number
   auth_pending: boolean
+  auth_request: AuthRequest | null
   last_error: string | null
 }
 
 export interface LogLine {
+  id: number
   level: string
   line: string
 }
 
-export interface AuthRequest {
-  is_2fa: boolean
-  code_mismatch: boolean
+export interface FieldError {
+  field: string
+  message: string
 }
 
 export type SettingsDTO = Record<string, unknown>

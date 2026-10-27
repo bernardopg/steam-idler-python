@@ -14,6 +14,9 @@ from steam_idle_bot.webapi.controller import AuthCodeRequest, BotController
 from steam_idle_bot.webapi.server import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
+# The Host guard only answers to loopback names; TestClient defaults to "testserver".
+BASE_URL = "http://127.0.0.1:8765"
+WS_URL = "ws://127.0.0.1:8765/api/ws"
 
 
 @pytest.fixture
@@ -23,7 +26,7 @@ def controller() -> BotController:
 
 @pytest.fixture
 def client(controller: BotController) -> TestClient:
-    return TestClient(create_app(controller))
+    return TestClient(create_app(controller), base_url=BASE_URL)
 
 
 @pytest.fixture
@@ -373,7 +376,7 @@ class TestApi:
 
     def test_websocket_init(self, client: TestClient, controller: BotController):
         controller._emit({"type": "log", "level": "INFO", "line": "hello"})
-        with client.websocket_connect("/api/ws") as websocket:
+        with client.websocket_connect(WS_URL) as websocket:
             message = websocket.receive_json()
         assert message["type"] == "init"
         assert message["snapshot"]["status"] == "stopped"
@@ -384,7 +387,7 @@ class TestApi:
         """Real end-to-end WebSocket loop: connect, emit a live event, and stay
         connected long enough for the periodic snapshot push (every 4 polls of
         ~0.3s) to fire for real — no mocking of the asyncio loop."""
-        with client.websocket_connect("/api/ws") as websocket:
+        with client.websocket_connect(WS_URL) as websocket:
             init = websocket.receive_json()
             assert init["type"] == "init"
 
@@ -504,7 +507,7 @@ class TestApi:
         fake_bot = FakeBot()
         controller._bot = fake_bot  # type: ignore[assignment]
 
-        with TestClient(create_app(controller)):
+        with TestClient(create_app(controller), base_url=BASE_URL):
             pass
 
         assert fake_bot.stopped is True
@@ -517,13 +520,13 @@ class TestApi:
         monkeypatch.setattr(server_module, "FRONTEND_DIST", Path("/nonexistent-frontend-dist"))
         app = server_module.create_app(controller)
 
-        with TestClient(app) as plain_client:
+        with TestClient(app, base_url=BASE_URL) as plain_client:
             response = plain_client.get("/")
 
         assert response.status_code == 200
         payload = response.json()
         assert payload["error"] == "Frontend not built"
-        assert "npm install" in payload["hint"]
+        assert "npm ci" in payload["hint"]
 
     def test_launch_web_runs_uvicorn_without_browser(self, monkeypatch):
         from steam_idle_bot.webapi.server import launch_web
@@ -589,3 +592,93 @@ def test_settings_dto_exposes_every_field(client: TestClient, hermetic_env) -> N
     client.put("/api/settings", json={"username": "someone", "password": "secret"})
     dto = client.get("/api/settings").json()["settings"]
     assert _settings_fields() - set(dto.keys()) == set()
+
+
+# ---------------------------------------------------------------------------
+# Local-only guard: DNS rebinding, CSRF, cross-site WebSocket hijacking
+# ---------------------------------------------------------------------------
+
+
+class TestLocalOriginGuard:
+    def test_foreign_host_is_rejected(self, client: TestClient):
+        response = client.get("/api/status", headers={"Host": "attacker.example:8765"})
+        assert response.status_code == 403
+        assert "Host not allowed" in response.json()["detail"]
+
+    @pytest.mark.parametrize("host", ["localhost:8765", "[::1]:8765", "127.0.0.1"])
+    def test_loopback_hosts_are_allowed(self, client: TestClient, host: str):
+        assert client.get("/api/status", headers={"Host": host}).status_code == 200
+
+    def test_cross_origin_post_is_rejected(self, client: TestClient):
+        response = client.post("/api/bot/stop", headers={"Origin": "https://evil.example"})
+        assert response.status_code == 403
+        assert "Cross-origin" in response.json()["detail"]
+
+    def test_cross_site_fetch_metadata_is_rejected(self, client: TestClient):
+        response = client.post("/api/bot/stop", headers={"Sec-Fetch-Site": "cross-site"})
+        assert response.status_code == 403
+
+    def test_same_origin_post_passes_the_guard(self, client: TestClient):
+        response = client.post("/api/bot/stop", headers={"Origin": BASE_URL, "Sec-Fetch-Site": "same-origin"})
+        assert response.status_code == 409  # reached the route: bot is not running
+
+    def test_cross_origin_get_is_allowed(self, client: TestClient):
+        # Reads stay readable only by same-origin pages (no CORS headers are sent).
+        assert client.get("/api/status", headers={"Origin": "https://evil.example"}).status_code == 200
+
+    def test_cross_origin_websocket_is_refused(self, client: TestClient):
+        from starlette.websockets import WebSocketDisconnect
+
+        with pytest.raises(WebSocketDisconnect) as excinfo, client.websocket_connect(WS_URL, headers={"Origin": "https://evil.example"}):
+            pass
+        assert excinfo.value.code == 1008
+
+    def test_same_origin_websocket_is_accepted(self, client: TestClient):
+        with client.websocket_connect(WS_URL, headers={"Origin": BASE_URL}) as websocket:
+            assert websocket.receive_json()["type"] == "init"
+
+    def test_custom_allowed_hosts(self, controller: BotController):
+        app = create_app(controller, allowed_hosts={"steam-idle.lan"})
+        with TestClient(app, base_url="http://steam-idle.lan") as lan_client:
+            assert lan_client.get("/api/status").status_code == 200
+        with TestClient(app, base_url=BASE_URL) as loopback_client:
+            assert loopback_client.get("/api/status").status_code == 403
+
+
+class TestSecretMasking:
+    def test_secrets_are_masked_and_kept_when_mask_is_sent_back(self, client: TestClient, hermetic_env):
+        saved = client.put(
+            "/api/settings",
+            json={"username": "someone", "password": "secret", "steam_api_key": "KEY123", "steam_web_cookies": "steamLoginSecure=tok; sessionid=abc"},
+        )
+        assert saved.status_code == 200
+
+        dto = client.get("/api/settings").json()["settings"]
+        assert dto["steam_api_key"] == "********"
+        assert dto["steam_web_cookies"] == "********"
+        assert "KEY123" not in str(dto) and "tok" not in str(dto)
+
+        dto["max_games_to_idle"] = 5
+        assert client.put("/api/settings", json=dto).status_code == 200
+
+        reloaded = Settings()
+        assert reloaded.steam_api_key == "KEY123"
+        assert reloaded.steam_web_cookies == {"steamLoginSecure": "tok", "sessionid": "abc"}
+        assert reloaded.max_games_to_idle == 5
+
+    def test_blank_secret_clears_it(self, client: TestClient, hermetic_env):
+        client.put("/api/settings", json={"username": "someone", "password": "secret", "steam_api_key": "KEY123"})
+        client.put("/api/settings", json={"username": "someone", "password": "", "steam_api_key": ""})
+        assert Settings().steam_api_key is None
+        assert client.get("/api/settings").json()["settings"]["steam_api_key"] == ""
+
+    def test_env_file_is_private(self, client: TestClient, hermetic_env):
+        client.put("/api/settings", json={"username": "someone", "password": "secret"})
+        assert ((hermetic_env / ".env").stat().st_mode & 0o777) == 0o600
+
+    def test_init_payload_carries_auth_request_details(self, client: TestClient, controller: BotController):
+        controller.pending_auth = AuthCodeRequest(is_2fa=False, code_mismatch=True)
+        with client.websocket_connect(WS_URL) as websocket:
+            init = websocket.receive_json()
+        assert init["auth_request"] == {"is_2fa": False, "code_mismatch": True}
+        controller.pending_auth = None

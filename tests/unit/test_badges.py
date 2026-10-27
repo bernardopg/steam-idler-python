@@ -48,7 +48,6 @@ def make_settings(**overrides):
         "card_cache_ttl_days": 30,
         "max_checks": None,
         "skip_failures": False,
-        "enable_encryption": False,
     }
     base.update(overrides)
     return Settings(**base)
