@@ -26,6 +26,7 @@ This bot uses real Steam credentials and **session cookies**, which are as sensi
 - `AUTO_BROWSER_COOKIES` reads cookies from your local browser only, on your machine. Nothing is uploaded.
 - Prefer a dedicated/secondary Steam account, and rotate your Web API key if you suspect exposure.
 - `.env` is written with owner-only permissions (`0600`). If you created it by hand, run `chmod 600 .env`.
+- The `native` backend keeps a Steam **refresh token** in `NATIVE_SESSION_PATH` (`.cache/steam_native_session.json`, mode `0600`, git-ignored). It logs into your account without the password or Steam Guard for months, so guard it like the password. To revoke it, delete the file and remove the "Steam Idle Bot" device under Steam → Account details → Authorized devices; changing the password also revokes it.
 
 ## Web UI exposure
 
@@ -42,7 +43,8 @@ Do not expose the port to a network or the internet (port-forwarding, `0.0.0.0` 
 The `steam[client]` library (1.4.x) hard-requires `protobuf>=3.0,<4`. The protobuf
 DoS advisories **GHSA-8qvm-5x2c-j2w7** and **GHSA-7gcm-g887-7qv7** are only patched in
 protobuf `4.25.8` / `5.29.6`, which that library forbids — so they cannot be resolved
-without dropping Steam support. They are accepted as **tolerable risk**: the bot only
+while the legacy `python` backend is installed. The `native` backend does not use
+protobuf at all (it ships its own minimal codec), so it is the path to dropping both. They are accepted as **tolerable risk**: the bot only
 deserializes protobuf/JSON from authenticated Steam servers over TLS, so the
 denial-of-service vectors require untrusted input that never reaches it. The pin
 rationale is documented in `pyproject.toml`.

@@ -61,11 +61,12 @@ Entry: `__main__.py` → `main.main()` parses args, loads `Settings`, then eithe
 `SteamIdleBot` (`main.py`) is the orchestrator. On construction it wires together the backend client and the three Steam services, then `run()` drives a refresh loop.
 
 ### Idling backends (swappable)
-Both expose the same client interface (`initialize/login/start_idling/stop_idling/is_connected/reconnect/refresh_games/sleep/logout/get_web_session`, plus `steam_id`/`username` properties). `build_steam_client()` selects by `IDLING_BACKEND`:
-- `SteamClientWrapper` (`steam/client.py`) — default `python` backend using the `steam` library (`SteamClient`). Handles Steam Guard / 2FA prompts and builds authenticated web sessions.
+All three expose the same client interface (`initialize/login/start_idling/stop_idling/is_connected/reconnect/refresh_games/sleep/logout/get_web_session`, plus `steam_id`/`username` properties). `build_steam_client()` selects by `IDLING_BACKEND`:
+- `NativeSteamClient` (`steam/native/`, `native`) — self-contained CM client, no `steam`/gevent/protobuf. `protobuf.py` = schema-driven proto2 codec (field numbers from SteamDatabase/Protobufs); `messages.py` = EMsg/EResult, schemas, packet framing (`uint32 emsg|0x80000000, uint32 hdrlen, CMsgProtoBufHeader, body`), bounded-gzip `Multi`, machine id; `crypto.py` = stdlib RSA PKCS#1 v1.5; `cm.py` = `CMConnection` (websockets sync client with `legacy=True`, reader thread, `call_service` jobs by `jobid_target`, `wait_for(..., after_register=send)` to avoid missing fast replies, heartbeat); `auth.py` = `IAuthenticationService` credential flow (SteamClient platform) → refresh token; `session_store.py` = 0600 JSON of refresh token + guard data per account; `client.py` = logon with `access_token=<refresh token>`, `ClientGamesPlayedWithDataBlob`, `PlayingSessionState` (never kicks; resends on unblock), web cookies `steamLoginSecure=quote(steamid||access_token)` via authed `GenerateAccessTokenForApp` (`refresh_web_session_if_stale()`, polled by `main._refresh_web_session_if_stale()` each refresh tick). Tests drive it through `tests/unit/_native_fakes.py::FakeSteam`, a fake CM speaking the real wire format; `tests/live/` (opt-in `STEAM_IDLE_LIVE_TESTS=1`) does an anonymous logon against real Steam.
+- `SteamClientWrapper` (`steam/client.py`) — default `python` backend using the legacy `steam` library (`SteamClient`). Handles Steam Guard / 2FA prompts and builds authenticated web sessions.
 - `SteamUtilityIdleClient` (`steam/steam_utility.py`) — delegates to an external `steam-utility-multiplataform` repo via `SteamUtilityBridge` (subprocess + JSON commands). Located via `STEAM_UTILITY_PATH` or sibling-directory autodiscovery.
 
-Key resilience behavior: if the python backend fails to initialize, login, start, or reconnect, `SteamIdleBot._switch_to_steam_utility()` transparently falls back to the steam_utility backend (only when starting from `python`).
+Key resilience behavior: if the python or native backend fails to initialize, login, start, or reconnect, `SteamIdleBot._switch_to_steam_utility()` transparently falls back to the steam_utility backend (only when starting from `python`/`native`, see `_FALLBACK_SOURCE_BACKENDS`).
 
 ### Game selection pipeline
 `GameManager.get_games_to_idle()` (`steam/games.py`) is the core filtering funnel, applied in order:
@@ -103,6 +104,6 @@ Settings GET masks the password, `steam_api_key` and `steam_web_cookies` as `***
 
 ## Dependency pins (don't break these)
 
-`pyproject.toml` lists only direct deps as loose floors; `uv.lock` pins exact versions (run `uv lock --upgrade` to refresh). Two non-obvious constraints are load-bearing for the `steam` library:
+`pyproject.toml` lists only direct deps as loose floors; `uv.lock` pins exact versions (run `uv lock --upgrade` to refresh). Two non-obvious constraints are load-bearing for the legacy `steam` library (the `native` backend needs neither; it only needs `websockets`):
 - **`protobuf>=3.20,<4`** — the `steam[client]` extra ships protoc-generated `_pb2` modules that fail on protobuf 4+ (`Descriptors cannot be created directly`). Never bump to 4.x while on `steam` 1.4.x.
 - **Do NOT add a standalone `eventemitter` package.** `steam.client` does `from eventemitter import EventEmitter`, but `steam[client]` already supplies this via `gevent-eventemitter` (a self-contained gevent-based `EventEmitter`). Installing the standalone `eventemitter` overwrites that module with an incompatible one and breaks the python backend at `SteamClient()` (`'SteamClient' object has no attribute '_listeners'`). An earlier `eventemitter==0.2.0` pin was removed for exactly this reason (commit `3f55645`); tests pass either way because they mock Steam, so a re-added pin only fails at runtime.

@@ -65,8 +65,20 @@ const GROUPS: GroupSpec[] = [
   {
     title: 'Execução',
     fields: [
-      { key: 'idling_backend', label: 'Backend', type: 'select', options: ['python', 'steam_utility'] },
-      { key: 'steam_utility_path', label: 'Caminho steam-utility', type: 'text', hint: 'Vazio = autodescoberta. Também usado no fallback do backend python.' },
+      {
+        key: 'idling_backend',
+        label: 'Backend',
+        type: 'select',
+        options: ['native', 'python', 'steam_utility'],
+        hint: 'native: cliente Steam embutido (recomendado). python: biblioteca steam legada. steam_utility: usa o Steam instalado.',
+      },
+      { key: 'steam_utility_path', label: 'Caminho steam-utility', type: 'text', hint: 'Vazio = autodescoberta. Também usado no fallback dos backends native e python.' },
+      {
+        key: 'native_session_path',
+        label: 'Sessão do backend native',
+        type: 'text',
+        hint: 'Guarda o refresh token (permissão 0600). Apague o arquivo para forçar novo login com Steam Guard.',
+      },
       { key: 'refresh_interval_seconds', label: 'Refresh (s)', type: 'number', min: 10, hint: 'Intervalo para reavaliar os jogos.' },
       { key: 'checkpoint_minutes', label: 'Checkpoint (min)', type: 'number', min: 0, hint: '0 desativa.' },
       { key: 'duration_minutes', label: 'Duração máx. (min)', type: 'number', min: 0, hint: '0 = até interromper.' },
@@ -121,6 +133,7 @@ const STRING_DEFAULTS: Record<string, string> = {
   browser_cookies_browser: 'auto',
   card_cache_path: '.cache/trading_cards.json',
   drop_cache_path: '.cache/no_drop_cards.json',
+  native_session_path: '.cache/steam_native_session.json',
 }
 
 type FormState = Record<string, string | boolean>

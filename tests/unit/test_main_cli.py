@@ -183,7 +183,7 @@ def test_ensure_client_ready_uses_failover_on_initialize_failure(monkeypatch):
     )
 
     assert bot._ensure_client_ready() is True
-    assert called == ["python client initialization failure"]
+    assert called == [f"{bot.settings.idling_backend} client initialization failure"]
 
 
 def test_ensure_client_ready_uses_failover_on_login_failure(monkeypatch):
@@ -197,7 +197,7 @@ def test_ensure_client_ready_uses_failover_on_login_failure(monkeypatch):
     )
 
     assert bot._ensure_client_ready() is True
-    assert called == ["python client login failure"]
+    assert called == [f"{bot.settings.idling_backend} client login failure"]
 
 
 def test_run_normal_mode_uses_failover_when_start_idling_fails(monkeypatch):

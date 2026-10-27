@@ -130,7 +130,7 @@ class CardDropChecker:
                 "(store-only/expired cookies?). Card-drop detection is unreliable: "
                 "games with unknown status will be EXCLUDED to avoid idling drained "
                 "games. Provide valid community STEAM_WEB_COOKIES or use "
-                "IDLING_BACKEND=python to enable accurate drop filtering."
+                "IDLING_BACKEND=native (mints its own community session) to enable accurate drop filtering."
             )
         else:
             logger.info("Verified authenticated steamcommunity session for card-drop checks")

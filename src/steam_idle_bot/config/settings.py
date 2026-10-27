@@ -228,9 +228,13 @@ class Settings(BaseSettings):
         ge=10,
         description="Seconds between re-running the game-selection pipeline while idling",
     )
-    idling_backend: Literal["python", "steam_utility"] = Field(
+    idling_backend: Literal["python", "native", "steam_utility"] = Field(
         default="python",
-        description="Backend used to keep Steam games idling",
+        description="Backend used to keep Steam games idling: native (built-in Steam client), python (legacy steam library) or steam_utility",
+    )
+    native_session_path: str = Field(
+        default=".cache/steam_native_session.json",
+        description="Where the native backend keeps its Steam refresh token (written with 0600 permissions)",
     )
     steam_utility_path: str | None = Field(
         default=None,
@@ -472,6 +476,7 @@ class Settings(BaseSettings):
             "refresh_interval_seconds": "REFRESH_INTERVAL_SECONDS",
             "idling_backend": "IDLING_BACKEND",
             "steam_utility_path": "STEAM_UTILITY_PATH",
+            "native_session_path": "NATIVE_SESSION_PATH",
             "steam_api_key": "STEAM_API_KEY",
             "steam_web_cookies": "STEAM_WEB_COOKIES",
             "log_level": "LOG_LEVEL",

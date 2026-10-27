@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from .config.settings import Settings, _quote_env_value, write_private_text
 from .steam.badges import BadgeService
@@ -202,6 +203,7 @@ class SteamIdleBot:
                 # Refresh games every refresh_interval seconds
                 if now - last_refresh >= refresh_interval:
                     self.logger.info("Refreshing game status...")
+                    self._refresh_web_session_if_stale()
                     self._capture_inventory_progress()
 
                     # Get fresh games list
@@ -605,11 +607,11 @@ class SteamIdleBot:
         """Initialize and login the active backend, switching if needed."""
         if not self.client.initialize():
             self.logger.error("Failed to initialize Steam client")
-            return self._switch_to_steam_utility("python client initialization failure")
+            return self._switch_to_steam_utility(f"{self.settings.idling_backend} client initialization failure")
 
         if not self.client.login():
             self.logger.error("Failed to login to Steam")
-            return self._switch_to_steam_utility("python client login failure")
+            return self._switch_to_steam_utility(f"{self.settings.idling_backend} client login failure")
 
         return True
 
@@ -620,7 +622,9 @@ class SteamIdleBot:
 
             cookies = load_community_cookies(steam_id, self.settings.browser_cookies_browser)
             if not cookies:
-                self.logger.warning("Could not recover community cookies from a local browser. Card-drop filtering stays conservative (drained games excluded). Log into Steam in your browser, or set IDLING_BACKEND=python.")
+                self.logger.warning(
+                    "Could not recover community cookies from a local browser. Card-drop filtering stays conservative (drained games excluded). Log into Steam in your browser, or set IDLING_BACKEND=native (mints its own web session)."
+                )
                 return False
 
             session = SteamClientWrapper._build_web_session_from_cookies(cookies)
@@ -635,7 +639,7 @@ class SteamIdleBot:
             self.logger.info("Recovered authenticated steamcommunity session from local browser cookies")
             return True
         except Exception as err:  # noqa: BLE001 - recovery is best-effort
-            self.logger.warning(f"Browser cookie recovery failed ({err}). Card-drop filtering stays conservative (drained games excluded). Provide valid community STEAM_WEB_COOKIES or set IDLING_BACKEND=python.")
+            self.logger.warning(f"Browser cookie recovery failed ({err}). Card-drop filtering stays conservative (drained games excluded). Provide valid community STEAM_WEB_COOKIES or set IDLING_BACKEND=native (mints its own web session).")
             return False
 
     @staticmethod
@@ -660,6 +664,26 @@ class SteamIdleBot:
             lines.append(rendered)
 
         write_private_text(target, "\n".join(lines) + "\n")
+
+    def _refresh_web_session_if_stale(self) -> None:
+        """Swap in a freshly minted web session before the old one expires.
+
+        Only the native backend can mint one (``refresh_web_session_if_stale``);
+        community access tokens live ~24h, so long runs would otherwise drift
+        into logged-out scraping.
+        """
+        refresh = getattr(self.client, "refresh_web_session_if_stale", None)
+        if not callable(refresh):
+            return
+        try:
+            session = refresh()
+        except Exception as err:  # noqa: BLE001 - keep idling with the current session
+            self.logger.debug("Web session refresh failed: %s", err)
+            return
+        if session:
+            self.game_manager.set_web_session(session)
+            self._inventory_reader = SteamTradingCardInventory(self.settings, session)
+            self.logger.info("Refreshed the authenticated Steam web session")
 
     def _configure_authenticated_web_session(self) -> None:
         """Configure the scraping layer with any authenticated web session available."""
@@ -691,17 +715,17 @@ class SteamIdleBot:
         *,
         games: list[int] | None = None,
     ) -> bool:
-        """Switch from the python backend to steam-utility when available."""
-        if self.settings.idling_backend != "python":
+        """Switch from the python/native backend to steam-utility when available."""
+        if self.settings.idling_backend not in _FALLBACK_SOURCE_BACKENDS:
             return False
 
-        if not isinstance(self.client, SteamClientWrapper):
+        if not isinstance(self.client, _fallback_source_client_types()):
             return False
 
         if isinstance(self.client, SteamUtilityIdleClient):
             return False
 
-        self.logger.warning(f"Switching idling backend from python to steam_utility: {reason}")
+        self.logger.warning(f"Switching idling backend from {self.settings.idling_backend} to steam_utility: {reason}")
 
         with contextlib.suppress(Exception):
             self.client.stop_idling()
@@ -726,11 +750,25 @@ class SteamIdleBot:
         return True
 
 
+# Backends that fall back to steam_utility when they cannot log in or idle.
+_FALLBACK_SOURCE_BACKENDS = ("python", "native")
+
+
+def _fallback_source_client_types() -> tuple[type[Any], ...]:
+    from .steam.native import NativeSteamClient
+
+    return (SteamClientWrapper, NativeSteamClient)
+
+
 def build_steam_client(settings: Settings, backend: str | None = None):
     """Create the configured Steam backend."""
     selected_backend = backend or settings.idling_backend
     if selected_backend == "steam_utility":
         return SteamUtilityIdleClient(settings)
+    if selected_backend == "native":
+        from .steam.native import NativeSteamClient
+
+        return NativeSteamClient(settings)
     return SteamClientWrapper(settings)
 
 

@@ -22,7 +22,7 @@ Most idlers blindly run every game in your library. This one is **selective and 
 - 🔐 **Trustworthy verdicts** — before relying on a Steam web session, the bot *verifies it's actually logged in*. A logged-out/expired session is detected and reported instead of silently idling drained games.
 - 🪄 **Self-healing auth** — if your configured cookies aren't a valid community session, it can pull a fresh one from a browser you're already signed into Steam with.
 - 🖥️ **Readable terminal UI** — a live panel with game names, cards remaining, and idle time, plus a full session report when you stop.
-- 🔁 **Two backends** — the built-in Python Steam client (handles Steam Guard / 2FA) or delegation to a local `steam-utility` install, with automatic fallback.
+- 🔁 **Three backends** — `native` (a built-in Steam client with the modern login: Steam Guard once, then a saved session), the legacy `python` client, or delegation to a local `steam-utility` install, with automatic fallback.
 - 🔄 **Rotates mid-session** — inventory snapshots can prove a game dropped all known remaining cards before badge pages update, so the next refresh can swap it out.
 - ⚡ **Modern & tested** — `uv`-managed, reproducible environments, full test suite, type-checked.
 
@@ -63,7 +63,7 @@ Most idlers blindly run every game in your library. This one is **selective and 
    ./run.sh          # terminal
    ```
 
-   Enter your Steam Guard code if prompted (Python backend only).
+   Enter your Steam Guard code if prompted (`native` and `python` backends). With `native` this happens once per machine.
 
 > 💡 **Get an API key.** A free [Steam Web API key](https://steamcommunity.com/dev/apikey) enables automatic library sync and badge-based drop filtering. Without it, the bot falls back to your manual `GAME_APP_IDS` list.
 
@@ -100,10 +100,19 @@ Settings load from environment variables and a `.env` file (copy `.env.example`)
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `IDLING_BACKEND` | `python` (built-in `steam` client) or `steam_utility` (delegate to a local install). | `python` |
+| `IDLING_BACKEND` | `native` (built-in Steam client, recommended), `python` (legacy `steam` library) or `steam_utility` (delegate to a local install). | `python` |
+| `NATIVE_SESSION_PATH` | Where `native` keeps its Steam refresh token (written `0600`). Delete it to force a new password + Steam Guard login. | `.cache/steam_native_session.json` |
 | `STEAM_UTILITY_PATH` | Path to a local `steam-utility-multiplataform` checkout (auto-discovered in sibling dirs if empty). | _(auto)_ |
 
-The Python backend handles Steam Guard / 2FA and builds an authenticated web session. If it fails to initialize, log in, start, or reconnect, the bot **automatically falls back** to the `steam_utility` backend.
+**`native`** talks to Steam directly over a TLS WebSocket, with no unmaintained dependencies:
+
+- **Login:** it uses Steam's current login service (RSA-encrypted password, then an e-mail/mobile code or an in-app approval). After that it logs on with a saved refresh token. Steam Guard is asked **once per machine**, not on every run or reconnect. The token is renewed automatically before it expires.
+- **Web session:** it mints its own `steamcommunity.com` session from the login, so card-drop filtering does not depend on browser cookies. It re-mints that session every 6 hours during long runs.
+- **Other sessions:** if you start a game on another PC, Steam pauses this bot's playtime. The bot logs that, does **not** kick your game, and resumes idling when you close it.
+
+The `python` backend uses the unmaintained `steam` library (last release 2022, pins protobuf 3). It still works, but `native` replaces it.
+
+If the `native` or `python` backend fails to initialize, log in, start, or reconnect, the bot **automatically falls back** to the `steam_utility` backend (when it is installed).
 
 ### Authentication & cookies
 
@@ -150,7 +159,7 @@ The bot defends against this automatically:
 **Your options, simplest first:**
 
 - ✅ **Stay logged into Steam in your browser** and leave `AUTO_BROWSER_COOKIES=true`. Nothing else to do.
-- 🔑 **Use the Python backend** (`IDLING_BACKEND=python`): logging in once (with 2FA) mints a proper community session.
+- 🔑 **Use the native backend** (`IDLING_BACKEND=native`): it mints a fresh community session from its own login and keeps it renewed.
 - 📋 **Paste cookies manually** into `STEAM_WEB_COOKIES` — make sure they come from `steamcommunity.com`, not the store.
 
 > ℹ️ If the badge API reports no `cards_remaining` (common once all your badges are completed), the bot reads the count directly from the badge page so the panel and report still show real numbers.
@@ -235,7 +244,7 @@ The final session report now shows a drop **Source**. `remaining-count` means be
 | --- | --- |
 | `Missing credentials` | Set `USERNAME`/`PASSWORD` in `.env` (no placeholder values). |
 | Login failed | Check credentials/2FA; confirm the account isn't locked. |
-| "NOT authenticated against steamcommunity" warning | Your session is store-only/expired. Stay logged into Steam in a browser (with `AUTO_BROWSER_COOKIES=true`), use `IDLING_BACKEND=python`, or paste community cookies. See [Authentication](#-authentication--card-drop-accuracy). |
+| "NOT authenticated against steamcommunity" warning | Your session is store-only/expired. Stay logged into Steam in a browser (with `AUTO_BROWSER_COOKIES=true`), use `IDLING_BACKEND=native`, or paste community cookies. See [Authentication](#-authentication--card-drop-accuracy). |
 | Idles drained games / misses real ones | Same root cause as above — the session isn't a valid community login. |
 | "Cards remaining" shows `?` | The badge API has no `cards_remaining` for a fully-completed profile; counts are read from badge pages when the session is authenticated. |
 | No games to idle | Add an API key, or run `--no-trading-cards` / `--keep-completed-drops`. |

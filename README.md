@@ -15,7 +15,7 @@
 > **Farm Steam playtime and trading-card drops on autopilot.** Steam Idle Bot syncs your
 > library, idles **only** the games that still have cards to drop, and remembers what's
 > already finished — so every run scans less and starts faster. Live terminal dashboard,
-> web UI, two interchangeable idling backends with automatic fallback.
+> web UI, three interchangeable idling backends with automatic fallback.
 
 ---
 
@@ -29,9 +29,9 @@ Most idlers blindly run every game forever. Steam Idle Bot is **accurate and sel
 | 🧠 **Learns over time** | Persistent no-drop caches record fully-farmed games; short-lived positive caches avoid re-scraping active games every refresh. |
 | 🔐 **Accurate by design** | Verifies the Steam web session is *genuinely* logged in before trusting it; auto-recovers a valid session from a browser you're signed into. |
 | 🖥️ **Readable output** | Live panel of game names, cards remaining and idle time; structured session report + optional JSON/Markdown checkpoints. |
-| 🔁 **Two backends, one interface** | Built-in Python client (Steam Guard / 2FA) **or** a local `steam-utility` install — with transparent fallback if one fails. |
+| 🔁 **Three backends, one interface** | `native` Steam client (modern login, Steam Guard once, self-renewing web session), the legacy `python` client, **or** a local `steam-utility` install — with transparent fallback if one fails. |
 | 🔄 **Rotates when cards drain** | Inventory snapshots can prove a game dropped all known remaining cards before badge pages catch up, so refreshes can replace it mid-session. |
-| ⚡ **Modern & tested** | `uv`-managed, fully typed, 560 tests across Python 3.12–3.14. |
+| ⚡ **Modern & tested** | `uv`-managed, fully typed, 670+ tests across Python 3.12–3.14. |
 
 ---
 
@@ -108,7 +108,7 @@ required values are `USERNAME` and `PASSWORD`; everything else has sane defaults
 | Key | Default | Purpose |
 |-----|---------|---------|
 | `STEAM_API_KEY` | — | Library sync + badge filtering *(recommended)* |
-| `IDLING_BACKEND` | `python` | `python` or `steam_utility` |
+| `IDLING_BACKEND` | `python` | `native` (recommended), `python` or `steam_utility` |
 | `MAX_GAMES_TO_IDLE` | `30` | Cap (Steam hard limit: 32) |
 | `REFRESH_INTERVAL_SECONDS` | `600` | How often the selection pipeline re-runs |
 | `CHECKPOINT_MINUTES` | `0` | Write JSON/MD checkpoints every N min (0 = off) |

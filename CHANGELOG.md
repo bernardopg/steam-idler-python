@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+### Added
+
+- New `IDLING_BACKEND=native`: a built-in Steam client (`steam_idle_bot/steam/native/`) that replaces the unmaintained `steam` library without gevent or protobuf.
+  - **Transport:** a TLS WebSocket to Steam CMs, picked from `ISteamDirectory`. The pure-Python protobuf codec follows the official `.proto` dumps, and gzip `Multi` packets are unpacked with a bounded inflate.
+  - **Login:** Steam's current `IAuthenticationService` flow (RSA-encrypted password, mobile/e-mail code or in-app approval). It produces a refresh token saved in `NATIVE_SESSION_PATH` (`0600`). Later runs and reconnects log on with it: Steam Guard is asked once per machine, and the token renews itself before it expires.
+  - **Idling:** uses `ClientGamesPlayedWithDataBlob`, with heartbeats and reconnects. When another session is playing a game on the account, the bot waits instead of kicking it, and resumes when that game closes.
+  - **Web session:** the `steamLoginSecure` cookie is minted from the login (`GenerateAccessTokenForApp`), so card-drop scraping no longer depends on browser cookies. It is re-minted every 6 hours during long runs.
+  - **Fallback:** falls back to `steam_utility` like the `python` backend does.
+  - **Tests:** a scripted fake CM speaks the real wire protocol, covering login, codes, token reuse/rejection/renewal, idling, session blocking, logoff and reconnect. Opt-in live tests (`STEAM_IDLE_LIVE_TESTS=1 uv run pytest tests/live`) check the protocol against Steam's servers with an anonymous logon.
+- `NATIVE_SESSION_PATH` setting, editable in the web UI. `websockets` is now a declared dependency (it was already installed through `uvicorn[standard]`).
+
 ### Security
 
 - Web UI: a new `LocalOriginGuard` middleware rejects requests whose `Host` is not a loopback name (DNS rebinding could previously read `GET /api/settings`, including the Steam API key and session cookies, from any website), and refuses cross-origin mutating requests and WebSocket handshakes (CSRF on `/api/bot/stop`, cross-site WebSocket hijacking of live logs).

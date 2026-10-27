@@ -22,7 +22,7 @@ A maioria dos idlers roda cegamente todos os jogos da biblioteca. Este é **sele
 - 🔐 **Vereditos confiáveis** — antes de confiar numa sessão web da Steam, o bot *verifica se ela está realmente logada*. Uma sessão deslogada/expirada é detectada e reportada, em vez de fazer idle de jogos drenados silenciosamente.
 - 🪄 **Autenticação auto-recuperável** — se os cookies configurados não forem uma sessão community válida, ele puxa uma nova de um navegador onde você já está logado na Steam.
 - 🖥️ **Saída legível no terminal** — um painel ao vivo com nomes dos jogos, cartas restantes e tempo de idle, além de um relatório completo ao parar.
-- 🔁 **Dois backends** — o cliente Steam Python embutido (lida com Steam Guard / 2FA) ou delegação a uma instalação local do `steam-utility`, com fallback automático.
+- 🔁 **Três backends** — `native` (cliente Steam embutido com o login moderno: Steam Guard uma vez, depois sessão salva), o cliente `python` legado ou delegação a uma instalação local do `steam-utility`, com fallback automático.
 - 🔄 **Rotação durante a sessão** — snapshots de inventário podem provar que um jogo dropou todas as cartas conhecidas antes das páginas de emblemas atualizarem, então o próximo refresh troca o slot.
 - ⚡ **Moderno e testado** — gerenciado por `uv`, ambientes reproduzíveis, suíte de testes completa e checagem de tipos.
 
@@ -63,7 +63,7 @@ A maioria dos idlers roda cegamente todos os jogos da biblioteca. Este é **sele
    ./run.sh          # terminal
    ```
 
-   Digite o código Steam Guard se solicitado (apenas no backend Python).
+   Digite o código Steam Guard se solicitado (backends `native` e `python`). Com o `native`, isso acontece uma vez por máquina.
 
 > 💡 **Pegue uma chave de API.** Uma [chave Steam Web API](https://steamcommunity.com/dev/apikey) gratuita habilita a sincronização automática da biblioteca e o filtro por emblemas. Sem ela, o bot usa sua lista manual em `GAME_APP_IDS`.
 
@@ -100,10 +100,19 @@ As configurações vêm de variáveis de ambiente e do arquivo `.env` (copie o `
 
 | Variável | Descrição | Padrão |
 | --- | --- | --- |
-| `IDLING_BACKEND` | `python` (cliente `steam` embutido) ou `steam_utility` (delega a uma instalação local). | `python` |
+| `IDLING_BACKEND` | `native` (cliente Steam embutido, recomendado), `python` (biblioteca `steam` legada) ou `steam_utility` (delega a uma instalação local). | `python` |
+| `NATIVE_SESSION_PATH` | Onde o `native` guarda o refresh token da Steam (gravado com `0600`). Apague para forçar novo login com senha + Steam Guard. | `.cache/steam_native_session.json` |
 | `STEAM_UTILITY_PATH` | Caminho de um checkout local do `steam-utility-multiplataform` (autodescoberto em diretórios irmãos se vazio). | _(auto)_ |
 
-O backend Python lida com Steam Guard / 2FA e constrói uma sessão web autenticada. Se ele falhar ao iniciar, logar, começar ou reconectar, o bot **cai automaticamente** para o backend `steam_utility`.
+O **`native`** fala direto com a Steam por um WebSocket TLS, sem dependências abandonadas:
+
+- **Login:** usa o serviço de login atual da Steam (senha criptografada com RSA, depois código por e-mail/celular ou aprovação no app). Em seguida entra com um refresh token salvo. O Steam Guard é pedido **uma vez por máquina**, não a cada execução ou reconexão. O token é renovado sozinho antes de expirar.
+- **Sessão web:** gera a própria sessão do `steamcommunity.com` a partir do login, então o filtro de drops não depende de cookies do navegador. Em execuções longas, renova essa sessão a cada 6 horas.
+- **Outras sessões:** se você abrir um jogo em outro PC, a Steam pausa o tempo de jogo do bot. O bot registra isso no log, **não** derruba o seu jogo e retoma o idle quando você fecha o jogo.
+
+O backend `python` usa a biblioteca `steam`, sem manutenção (último release em 2022, trava o protobuf 3). Ainda funciona, mas o `native` o substitui.
+
+Se o backend `native` ou `python` falhar ao iniciar, logar, começar ou reconectar, o bot **cai automaticamente** para o backend `steam_utility` (quando instalado).
 
 ### Autenticação & cookies
 
@@ -150,7 +159,7 @@ O bot se defende disso automaticamente:
 **Suas opções, da mais simples à mais técnica:**
 
 - ✅ **Fique logado na Steam no navegador** e deixe `AUTO_BROWSER_COOKIES=true`. Nada mais a fazer.
-- 🔑 **Use o backend Python** (`IDLING_BACKEND=python`): logar uma vez (com 2FA) gera uma sessão community apropriada.
+- 🔑 **Use o backend native** (`IDLING_BACKEND=native`): ele gera uma sessão community nova a partir do próprio login e a mantém renovada.
 - 📋 **Cole cookies manualmente** em `STEAM_WEB_COOKIES` — garanta que vieram de `steamcommunity.com`, não da store.
 
 > ℹ️ Se a badge API não retornar `cards_remaining` (comum quando todos os emblemas já estão completos), o bot lê a contagem direto da página de emblemas, para o painel e o relatório continuarem mostrando números reais.
@@ -236,7 +245,7 @@ O relatório final agora mostra uma coluna/fonte de drop. `remaining-count` sign
 | --- | --- |
 | `Missing credentials` | Defina `USERNAME`/`PASSWORD` no `.env` (sem valores placeholder). |
 | Falha no login | Cheque credenciais/2FA; confirme que a conta não está bloqueada. |
-| Aviso "NOT authenticated against steamcommunity" | Sua sessão é store-only/expirada. Fique logado na Steam no navegador (com `AUTO_BROWSER_COOKIES=true`), use `IDLING_BACKEND=python`, ou cole cookies community. Veja [Autenticação](#-autenticação--precisão-dos-drops). |
+| Aviso "NOT authenticated against steamcommunity" | Sua sessão é store-only/expirada. Fique logado na Steam no navegador (com `AUTO_BROWSER_COOKIES=true`), use `IDLING_BACKEND=native`, ou cole cookies community. Veja [Autenticação](#-autenticação--precisão-dos-drops). |
 | Faz idle de jogos drenados / perde os reais | Mesma causa raiz acima — a sessão não é um login community válido. |
 | "Cartas restantes" mostra `?` | A badge API não tem `cards_remaining` para um perfil totalmente completo; as contagens são lidas das páginas de emblemas quando a sessão está autenticada. |
 | Nenhum jogo para idle | Adicione uma chave de API, ou rode `--no-trading-cards` / `--keep-completed-drops`. |

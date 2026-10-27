@@ -15,7 +15,7 @@ Your quick reference for day-to-day Steam Idle Bot commands. For setup, configur
 # Preview config + chosen games — no Steam contact, no login
 ./run.sh --dry-run
 
-# Start idling (terminal). Steam Guard prompt appears if needed (python backend)
+# Start idling (terminal). Steam Guard prompt appears if needed (native: once per machine)
 ./run.sh
 
 # Desktop GUI
@@ -80,7 +80,7 @@ USERNAME=foo PASSWORD=bar ./run.sh --dry-run
 | Variable | Quick note |
 | --- | --- |
 | `STEAM_API_KEY` | Enables library sync + badge data (recommended) |
-| `IDLING_BACKEND` | `python` (Steam Guard / 2FA) or `steam_utility` |
+| `IDLING_BACKEND` | `native` (Steam Guard once, saved session), `python` (legacy) or `steam_utility` |
 | `AUTO_BROWSER_COOKIES` | Auto-recover a valid community session from your browser |
 | `MAX_GAMES_TO_IDLE` | Cap concurrent games (Steam limit: 32) |
 | `LOG_LEVEL` | `INFO` for clean output, `DEBUG` for troubleshooting |

@@ -31,6 +31,7 @@ Este bot usa credenciais reais da Steam e **cookies de sessão**, que são tão 
 - `AUTO_BROWSER_COOKIES` lê cookies apenas do seu navegador local, na sua máquina. Nada é enviado para fora.
 - Prefira uma conta Steam dedicada/secundária e rotacione sua chave Web API se suspeitar de exposição.
 - O `.env` é gravado com permissão só do dono (`0600`). Se você o criou à mão, rode `chmod 600 .env`.
+- O backend `native` guarda um **refresh token** da Steam em `NATIVE_SESSION_PATH` (`.cache/steam_native_session.json`, permissão `0600`, ignorado pelo git). Ele entra na conta sem senha nem Steam Guard por meses, então proteja-o como a senha. Para revogar, apague o arquivo e remova o dispositivo "Steam Idle Bot" em Steam → Detalhes da conta → Dispositivos autorizados; trocar a senha também o revoga.
 
 ## Exposição da interface web
 
