@@ -66,6 +66,11 @@ packages = ["src/steam_idle_bot"]
 # published wheel serves the web UI; it is gitignored, hence listed as artifacts.
 artifacts = ["src/steam_idle_bot/webapi/static/**"]
 
+[tool.hatch.build.targets.sdist]
+# `uv build` builds the wheel from the sdist, so the bundled UI must be in the
+# sdist too or the wheel silently ships without it.
+artifacts = ["src/steam_idle_bot/webapi/static/**"]
+
 [dependency-groups]
 dev = [
     "httpx2>=2.16",
