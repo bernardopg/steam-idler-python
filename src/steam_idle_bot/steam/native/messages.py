@@ -389,7 +389,13 @@ def machine_id_for(account_name: str) -> bytes:
 
     out = b"\x00" + kv_string("MessageObject")
     for key in ("BB3", "FF2", "3B3"):
-        digest = hashlib.sha1(f"SteamUser Hash {key} {account_name}".encode()).hexdigest()  # noqa: S324 - identifier, not security
+        # SHA-1 is mandated by the Steam wire format: this derives an opaque
+        # device identifier, not a password hash or integrity check. Changing
+        # the algorithm would change the id and make Steam see a new device.
+        digest = hashlib.sha1(  # noqa: S324 - identifier, not security
+            f"SteamUser Hash {key} {account_name}".encode(),
+            usedforsecurity=False,
+        ).hexdigest()
         out += b"\x01" + kv_string(key) + kv_string(digest)
     return out + b"\x08\x08"
 
