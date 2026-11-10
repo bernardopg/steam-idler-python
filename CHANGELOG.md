@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-10
+
 ### Added
 
 - New `IDLING_BACKEND=native`: a built-in Steam client (`steam_idle_bot/steam/native/`) that replaces the unmaintained `steam` library without gevent or protobuf.
@@ -23,6 +25,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - `GET /api/settings` now masks `STEAM_API_KEY` and `STEAM_WEB_COOKIES` like the password. Sending the mask back keeps the saved value; sending a blank value clears it.
 - `.env` is written atomically with mode `0600`. Values containing ` #`, line breaks, or leading/trailing spaces or quotes are now quoted, so python-dotenv reads them back unchanged. Before, a password such as `abc #1` was silently cut to `abc`.
 - `certifi` 2026.7.22 → 2026.10.23 (PYSEC-2026-4320).
+- `pydantic` 2.14.1 → 2.14.2 (`pydantic-core` 2.50.2): fixes GHSA-qpmf-fgh3-ff25 and GHSA-3r8g-cqwr-jr29.
+- The native backend's machine-id SHA-1 is marked `usedforsecurity=False`. It derives an opaque device identifier fixed by the Steam protocol, not a credential hash (CodeQL `py/weak-sensitive-data-hashing`, dismissed as a false positive).
 
 ### Fixed
 
@@ -56,9 +60,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - Xvfb dropped (no test needs a display since the Tk GUI was removed).
 - Dependabot now covers `uv.lock` and `frontend/` (npm), with grouped minor/patch updates.
 - Dependency refresh:
-  - Python: `fastapi` 0.143.1 → 0.162.0, `starlette` 1.8.0 → 1.10.0, `pydantic-settings` 2.16.0 → 2.16.1, `httpx2` 2.13.1 → 2.16.0, `ruff` 0.17.0 → 0.17.3, plus transitive bumps;
-  - frontend: `vite` 8.3.4 → 8.3.5;
-  - Actions: `astral-sh/setup-uv` v10.3.0 → v10.3.2, `actions/setup-python` v7.0.0 → v7.1.0, `pypa/gh-action-pypi-publish` v1.14.2 → v1.14.3.
+  - Python: `fastapi` 0.143.1 → 0.162.0, `starlette` 1.8.0 → 1.10.0, `pydantic-settings` 2.16.0 → 2.16.2, `websockets` 17.3 → 17.4, `httpx2` 2.13.1 → 2.16.0, `ruff` 0.17.0 → 0.17.3, `mypy` 2.4.0 → 2.4.1, `pytest` 9.1.1 → 9.2.0, `types-requests` → 2.33.0.20261030, plus transitive bumps;
+  - frontend: `vite` 8.3.4 → 8.3.5, `tailwindcss`/`@tailwindcss/vite` 4.3.3 → 4.3.5, `@vitejs/plugin-react` 6.1.2 → 6.3.0;
+  - Actions: `astral-sh/setup-uv` v10.3.0 → v10.3.3, `actions/setup-python` v7.0.0 → v7.1.0, `pypa/gh-action-pypi-publish` v1.14.2 → v1.14.3.
 
 ## [1.0.3] - 2026-10-14
 
