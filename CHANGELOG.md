@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+### Changed
+
+- Python 3.15 is now supported and tested in CI (matrix 3.12–3.15).
+- CI and release workflows run on Node.js 26 LTS (was 24).
+- Python dependencies refreshed in `uv.lock`: `pydantic` 2.14.3 (`pydantic-core` 2.50.4), `pydantic-settings` 2.16.3, `fastapi` 0.163.1, `anyio` 4.16.0, `cachetools` 8.0.0, `click` 8.5.1, `pycryptodomex` 3.24.2; dev tools `ruff` 0.17.5, `coverage` 7.17.3, `httpx2` 2.16.2.
+- Frontend: `vite` 8.3.8 plus refreshed transitive dependencies.
+- `softprops/action-gh-release` 3.0.4.
+
 ## [1.1.0] - 2026-11-10
 
 ### Added
