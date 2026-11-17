@@ -1427,7 +1427,7 @@ client = [
 
 [[package]]
 name = "steam-idle-bot"
-version = "1.1.0"
+version = "1.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "browser-cookie3" },

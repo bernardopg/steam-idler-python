@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-16
+
 ### Changed
 
 - Python 3.15 is now supported and tested in CI (matrix 3.12–3.15).
