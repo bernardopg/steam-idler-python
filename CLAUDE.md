@@ -38,7 +38,7 @@ uv run ruff format .            # format
 uv run mypy src                 # type-check (mypy_path=src, ignore_missing_imports)
 ```
 
-CI (`.github/workflows/ci.yml`) runs ruff+mypy+pytest+coverage across Python 3.12–3.14, a frontend `npm ci && npm run build` job, and a dependency audit (`pip-audit` on the uv export, ignoring only the two protobuf advisories pinned by `steam`, plus `npm audit`) on push/PR to `main`, matching `requires-python = ">=3.12"`. The release workflow copies `frontend/dist` into `src/steam_idle_bot/webapi/static/` (gitignored, declared as hatch `artifacts`) before `uv build`, so the PyPI wheel serves the UI. Tests inject `USERNAME=test_user` / `PASSWORD=test_pass` via env so the `Settings` model validates.
+CI (`.github/workflows/ci.yml`) runs ruff+mypy+pytest+coverage across Python 3.12–3.15, a frontend `npm ci && npm run build` job, and a dependency audit (`pip-audit` on the uv export, ignoring only the two protobuf advisories pinned by `steam`, plus `npm audit`) on push/PR to `main`, matching `requires-python = ">=3.12"`. The release workflow copies `frontend/dist` into `src/steam_idle_bot/webapi/static/` (gitignored, declared as hatch `artifacts`) before `uv build`, so the PyPI wheel serves the UI. Tests inject `USERNAME=test_user` / `PASSWORD=test_pass` via env so the `Settings` model validates.
 
 A `.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`) blocks committing `config.py` and staged cache/venv/.vscode files.
 

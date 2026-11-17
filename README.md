@@ -31,7 +31,7 @@ Most idlers blindly run every game forever. Steam Idle Bot is **accurate and sel
 | 🖥️ **Readable output** | Live panel of game names, cards remaining and idle time; structured session report + optional JSON/Markdown checkpoints. |
 | 🔁 **Three backends, one interface** | `native` Steam client (modern login, Steam Guard once, self-renewing web session), the legacy `python` client, **or** a local `steam-utility` install — with transparent fallback if one fails. |
 | 🔄 **Rotates when cards drain** | Inventory snapshots can prove a game dropped all known remaining cards before badge pages catch up, so refreshes can replace it mid-session. |
-| ⚡ **Modern & tested** | `uv`-managed, fully typed, 670+ tests across Python 3.12–3.14. |
+| ⚡ **Modern & tested** | `uv`-managed, fully typed, 670+ tests across Python 3.12–3.15. |
 
 ---
 
